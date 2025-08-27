@@ -1,0 +1,20 @@
+[package]
+name = "onnxconformal-rs"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Conformal prediction sets/intervals for classification & regression (Rust CLI)."
+
+[dependencies]
+anyhow = "1"
+thiserror = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rayon = "1"
+itertools = "0.13"
+ordered-float = "4"
+
+[features]
+# Placeholder for future ONNX inference (ort crate). Off by default.
+onnx = []
