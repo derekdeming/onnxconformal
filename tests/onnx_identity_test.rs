@@ -8,10 +8,11 @@ use std::io::{BufReader, BufWriter, Cursor};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-// identity.ort from ort v2.0.0-rc.10, embedded as base64
+/// identity.ort from ort v2.0.0-rc.10, embedded as base64.
 const IDENTITY_ORT_B64: &str =
     "FAAAAE9SVE0MABAADAAIAAAABAAMAAAADAAAAJQAAADgAwAA0v3//wQAAAABAAAABAAAANj///8QAAAABAAAAAEAAAAgAAAADAAAADpJZGVudGl0eToyMQAAAAAIAAwABAAIAAgAAAAIAAAADAAAAAEAAABWAAAAAgAAABwAAAAMAAAAAAAGAAgABwAGAAAAAAAAAQQABAAEAAAAFAAkABgAFAAAAAAAEAAIAAAABAAUAAAANAAAAP////////9/OAMAAMwBAAAKAAAAAAAAAAAAAAAUACQAIAAcABgAFAAQAAwACAAEABQAAAB4AQAAeAEAAIgBAAAUAAAAAQAAABQAAADkAAAAWAEAAAEAAAAYAAAAAQAAAEQAAAAAAAoADAAAAAQACAAKAAAADAAAAAQAAAAAAAAAAAAAAAAAHgAwACwAKAAkACAAAAAcAAAAGAAUABAADAAIAAQAHgAAADAAAAAwAAAAJAAAADAAAAA0AAAAOAAAAFAAAAAVAAAAeAIAAFQAAABYAAAAAAAAAAAAAAABAAAAAQAAAAEAAADQAAAAAQAAANwAAAAUAAAAQ1BVRXhlY3V0aW9uUHJvdmlkZXIAAAAACAAAAElkZW50aXR5AAAAAAAAAAAAAAAAAAAAAAAAAAACAAAARAAAABAAAAAAAAoADAAIAAAABAAKAAAACAAAAGgAAADO////DAAAAAABBgAKAAQABgAAAAkAAAAAAAoADgAIAAAABAAKAAAAFAAAAEwAAAAAAAoACgAAAAkABAAKAAAADAAAAAABBgAIAAQABgAAAAkAAAAAAAAAAAAAAAEAAAAEAAAABgAAAG91dHB1dAAAAQAAAAQAAAAFAAAAaW5wdXQAAAAIAAAAUAEAABwBAADwAAAAxAAAAJAAAABkAAAAMAAAAAQAAAAI////AQAAAAAAAAAEAAAAEAAAAG9yZy5weXRvcmNoLmF0ZW4AAAAAMP///wEAAAAAAAAABAAAABoAAABjb20ubWljcm9zb2Z0LmV4cGVyaW1lbnRhbAAAMP///wEAAAAAAAAAAAAAAAQAAAANAAAAY29tLm1pY3Jvc29mdAAAAIj///8BAAAAAAAAAAQAAAAYAAAAYWkub25ueC5wcmV2aWV3LnRyYWluaW5nAAAAALj///8BAAAAAAAAAAQAAAAQAAAAYWkub25ueC50cmFpbmluZwAAAADg////BQAAAAAAAAAEAAAACgAAAGFpLm9ubngubWwAAAgAEAAMAAQACAAAAAEAAAAAAAAABAAAABMAAABjb20ubWljcm9zb2Z0Lm5jaHdjAAgAFAAQAAQACAAAABUAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAEAAAA2AAAA";
 
+/// Minimal base64 decoder for the embedded ORT model.
 fn decode_b64(s: &str) -> Vec<u8> {
     let mut out = Vec::new();
     let mut buf = [0u8; 4];
@@ -45,6 +46,7 @@ fn decode_b64(s: &str) -> Vec<u8> {
     out
 }
 
+/// Creates a unique temporary file path for test artifacts.
 fn tmp_file(name: &str, ext: &str) -> PathBuf {
     let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let mut p = std::env::temp_dir();
@@ -52,6 +54,7 @@ fn tmp_file(name: &str, ext: &str) -> PathBuf {
     p
 }
 
+/// Decodes and writes the embedded identity model to a temp file.
 fn write_identity_model() -> PathBuf {
     let bytes = decode_b64(IDENTITY_ORT_B64);
     assert!(!bytes.is_empty());
@@ -60,10 +63,10 @@ fn write_identity_model() -> PathBuf {
     path
 }
 
+/// ONNX classification: calibrate from features and predict using identity model.
 #[test]
 fn onnx_classification_identity_end_to_end() {
     let model_path = write_identity_model();
-    // Build calibration file with 2-class logits and labels
     let calib_path = tmp_file("class_feats", "jsonl");
     {
         let mut f = fs::File::create(&calib_path).unwrap();
@@ -82,7 +85,6 @@ fn onnx_classification_identity_end_to_end() {
     assert_eq!(model.task, "class");
     assert_eq!(model.labels.as_deref(), Some(&["a".to_string(), "b".to_string()][..]));
 
-    // Predict from features using ONNX
     let pred_path = tmp_file("class_pred_feats", "jsonl");
     {
         let mut f = fs::File::create(&pred_path).unwrap();
@@ -107,10 +109,10 @@ fn onnx_classification_identity_end_to_end() {
     assert!(o2.set_size <= 1);
 }
 
+/// ONNX regression: calibrate from features + y_true and predict intervals.
 #[test]
 fn onnx_regression_identity_end_to_end() {
     let model_path = write_identity_model();
-    // Calibrate from features + y_true
     let calib_path = tmp_file("regr_feats", "jsonl");
     {
         let mut f = fs::File::create(&calib_path).unwrap();
@@ -123,7 +125,6 @@ fn onnx_regression_identity_end_to_end() {
     assert_eq!(model.task, "regr");
     assert!(model.global_q.is_finite());
 
-    // Predict from features
     let preds = [serde_json::json!({"x":[1.0]}), serde_json::json!({"x":[-2.0]})]
         .into_iter().map(|v| v.to_string()).collect::<Vec<_>>().join("\n");
     let reader = BufReader::new(Cursor::new(preds));
@@ -137,4 +138,3 @@ fn onnx_regression_identity_end_to_end() {
     let lines: Vec<&str> = s.lines().collect();
     assert_eq!(lines.len(), 2);
 }
-

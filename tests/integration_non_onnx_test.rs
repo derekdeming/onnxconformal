@@ -5,15 +5,17 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 
+/// Resolves a repository-relative path for test inputs.
 fn root_path(rel: &str) -> PathBuf {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     p.push(rel);
     p
 }
 
+/// End-to-end classification (non‑ONNX): calibrate from `calib.jsonl` and
+/// predict sets for `examples/class_scores.jsonl`.
 #[test]
 fn example_classification_end_to_end() {
-    // Calibrate from the provided calibration file at repo root
     let calib_path = root_path("calib.jsonl");
     let cfg = CalibConfig { alpha: 0.1, mondrian: false, max_rows: None, #[cfg(feature = "onnx")] onnx: None };
     let model = CalibModel::fit_from_file(calib_path.to_str().unwrap(), CalibFileKind::Classification, cfg).unwrap();
@@ -21,7 +23,6 @@ fn example_classification_end_to_end() {
     assert!(model.global_q.is_finite());
     assert!(model.n >= 1);
 
-    // Predict from examples/class_scores.jsonl
     let scores_path = root_path("examples/class_scores.jsonl");
     let reader = BufReader::new(File::open(scores_path).unwrap());
     let mut out_buf: Vec<u8> = Vec::new();
@@ -40,19 +41,19 @@ fn example_classification_end_to_end() {
     let o2: Out = serde_json::from_str(lines[1]).unwrap();
     assert!(o1.set_size <= 1);
     assert!(o2.set_size <= 1);
-    assert_eq!(o1.max_prob_index, Some(0)); // first row: probs [0.90, 0.10]
+    assert_eq!(o1.max_prob_index, Some(0));
 }
 
+/// End-to-end regression (non‑ONNX): calibrate from
+/// `examples/regr_calib.jsonl` and predict intervals.
 #[test]
 fn example_regression_end_to_end() {
-    // Calibrate from examples/regr_calib.jsonl
     let calib_path = root_path("examples/regr_calib.jsonl");
     let cfg = CalibConfig { alpha: 0.2, mondrian: false, max_rows: None, #[cfg(feature = "onnx")] onnx: None };
     let model = CalibModel::fit_from_file(calib_path.to_str().unwrap(), CalibFileKind::Regression, cfg).unwrap();
     assert_eq!(model.task, "regr");
     assert!(model.global_q.is_finite());
 
-    // Predict intervals for examples/regr_preds.jsonl
     let preds_path = root_path("examples/regr_preds.jsonl");
     let reader = BufReader::new(File::open(preds_path).unwrap());
     let mut out_buf: Vec<u8> = Vec::new();
@@ -69,7 +70,6 @@ fn example_regression_end_to_end() {
     struct R { width: f64 }
     let r1: R = serde_json::from_str(lines[0]).unwrap();
     let r2: R = serde_json::from_str(lines[1]).unwrap();
-    // width should be 2*global_q
     let w = 2.0 * model.global_q;
     assert!((r1.width - w).abs() < 1e-9);
     assert!((r2.width - w).abs() < 1e-9);

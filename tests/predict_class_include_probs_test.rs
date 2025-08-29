@@ -13,19 +13,18 @@ struct ClassOutFull {
     set_probs: Option<Vec<f64>>,
 }
 
+/// Classification sets: includes labels and probs, with and without top‑k truncation.
 #[test]
 fn test_predict_classification_labels_and_include_probs_truncation() {
-    // Build a calib model with labels and a threshold to include indices with p >= 0.3
     let calib = CalibModel {
         task: "class".into(),
         alpha: 0.1,
-        global_q: 0.7, // include if (1-p) <= 0.7  => p >= 0.3
+        global_q: 0.7,
         per_label_q: None,
         labels: Some(vec!["a".into(), "b".into(), "c".into()]),
         n: 42,
     };
 
-    // First, without truncation
     let input = serde_json::json!({"probs": [0.6, 0.3, 0.1]}).to_string();
     let reader = BufReader::new(Cursor::new(input));
     let mut out_buf: Vec<u8> = Vec::new();
@@ -48,7 +47,6 @@ fn test_predict_classification_labels_and_include_probs_truncation() {
     assert_eq!(rec.max_prob_label.as_deref(), Some("a"));
     assert_eq!(rec.max_prob_index, Some(0));
 
-    // Now with truncation to top-1 by prob
     let reader = BufReader::new(Cursor::new(serde_json::json!({"probs": [0.6, 0.3, 0.1]}).to_string()));
     let mut out_buf2: Vec<u8> = Vec::new();
     {

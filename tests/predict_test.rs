@@ -10,6 +10,7 @@ struct ClassOut {
     max_prob_index: Option<usize>,
 }
 
+/// Streaming classification prediction from probability rows.
 #[test]
 fn test_predict_classification_stream() {
     let calib = CalibModel { task: "class".into(), alpha: 0.1, global_q: 0.2, per_label_q: None, labels: None, n: 10 };
@@ -47,6 +48,7 @@ fn test_predict_classification_stream() {
 #[derive(Debug, Deserialize)]
 struct RegrOut { lower: f64, upper: f64 }
 
+/// Streaming regression interval prediction from `y_pred` rows.
 #[test]
 fn test_predict_regression_stream() {
     let calib = CalibModel { task: "regr".into(), alpha: 0.1, global_q: 0.5, per_label_q: None, labels: None, n: 10 };
