@@ -30,19 +30,18 @@ fn test_calibrate_classification_logits_and_labels_mondrian() {
             f,
             "{}",
             serde_json::json!({"labels":["ham","phish"], "logits":[2.0, 0.0], "label":"ham"})
-                .to_string()
         )
         .unwrap();
         writeln!(
             f,
             "{}",
-            serde_json::json!({"logits":[-1.0, 1.0], "label":"phish"}).to_string()
+            serde_json::json!({"logits":[-1.0, 1.0], "label":"phish"})
         )
         .unwrap();
         writeln!(
             f,
             "{}",
-            serde_json::json!({"logits":[1.5, 0.5], "label":"ham"}).to_string()
+            serde_json::json!({"logits":[1.5, 0.5], "label":"ham"})
         )
         .unwrap();
     }

@@ -26,19 +26,19 @@ fn test_calibrate_classification() {
         writeln!(
             f,
             "{}",
-            serde_json::json!({"probs": [0.6, 0.4], "label_index": 0}).to_string()
+            serde_json::json!({"probs": [0.6, 0.4], "label_index": 0})
         )
         .unwrap();
         writeln!(
             f,
             "{}",
-            serde_json::json!({"probs": [0.2, 0.8], "label_index": 1}).to_string()
+            serde_json::json!({"probs": [0.2, 0.8], "label_index": 1})
         )
         .unwrap();
         writeln!(
             f,
             "{}",
-            serde_json::json!({"probs": [0.7, 0.3], "label_index": 0}).to_string()
+            serde_json::json!({"probs": [0.7, 0.3], "label_index": 0})
         )
         .unwrap();
     }
@@ -77,23 +77,11 @@ fn test_calibrate_regression() {
     let path = tmp_file("regr");
     {
         let mut f = fs::File::create(&path).unwrap();
-        writeln!(
-            f,
-            "{}",
-            serde_json::json!({"y_true": 1.0, "y_pred": 1.2}).to_string()
-        )
+        writeln!(f, "{}", serde_json::json!({"y_true": 1.0, "y_pred": 1.2}))
         .unwrap();
-        writeln!(
-            f,
-            "{}",
-            serde_json::json!({"y_true": 0.0, "y_pred": -0.1}).to_string()
-        )
+        writeln!(f, "{}", serde_json::json!({"y_true": 0.0, "y_pred": -0.1}))
         .unwrap();
-        writeln!(
-            f,
-            "{}",
-            serde_json::json!({"y_true": -1.0, "y_pred": -0.7}).to_string()
-        )
+        writeln!(f, "{}", serde_json::json!({"y_true": -1.0, "y_pred": -0.7}))
         .unwrap();
     }
 
