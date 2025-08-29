@@ -52,7 +52,25 @@ Examples
   - `cargo run --features onnx -- calibrate --task class --alpha 0.1 --input calib_feats.jsonl --output calib.json --onnx-model model.onnx`
 - Predict classification sets by running the ONNX model:
   - `cargo run --features onnx -- predict --task class --calib calib.json --input feats.jsonl --output sets.jsonl --onnx-model model.onnx`
- - Calibrate regression from ONNX model outputs:
-   - `cargo run --features onnx -- calibrate --task regr --alpha 0.1 --input calib_feats_regr.jsonl --output calib_regr.json --onnx-model model.onnx`
- - Predict regression intervals by running the ONNX model:
-   - `cargo run --features onnx -- predict --task regr --calib calib_regr.json --input feats.jsonl --output intervals.jsonl --onnx-model model.onnx`
+- Calibrate regression from ONNX model outputs:
+  - `cargo run --features onnx -- calibrate --task regr --alpha 0.1 --input calib_feats_regr.jsonl --output calib_regr.json --onnx-model model.onnx`
+- Predict regression intervals by running the ONNX model:
+  - `cargo run --features onnx -- predict --task regr --calib calib_regr.json --input feats.jsonl --output intervals.jsonl --onnx-model model.onnx`
+
+Sample files
+
+- Classification (non-ONNX):
+  - Calibrate: `calib.jsonl` (at repo root)
+  - Predict: `examples/class_scores.jsonl`
+- Regression (non-ONNX):
+  - Calibrate: `examples/regr_calib.jsonl`
+  - Predict: `examples/regr_preds.jsonl`
+
+Run with sample files
+
+- Classification:
+  - `cargo run -- calibrate --task class --alpha 0.1 --input calib.jsonl --output calib.json`
+  - `cargo run -- predict --task class --calib calib.json --input examples/class_scores.jsonl --output sets.jsonl --include_probs`
+- Regression:
+  - `cargo run -- calibrate --task regr --alpha 0.2 --input examples/regr_calib.jsonl --output calib_regr.json`
+  - `cargo run -- predict --task regr --calib calib_regr.json --input examples/regr_preds.jsonl --output intervals.jsonl`
