@@ -36,7 +36,13 @@ fn example_classification_end_to_end() {
     assert_eq!(lines.len(), 2);
 
     #[derive(Deserialize)]
-    struct Out { set_indices: Vec<usize>, set_size: usize, max_prob_index: Option<usize> }
+    struct Out {
+        #[allow(dead_code)]
+        #[serde(rename = "set_indices")]
+        _set_indices: Vec<usize>,
+        set_size: usize,
+        max_prob_index: Option<usize>,
+    }
     let o1: Out = serde_json::from_str(lines[0]).unwrap();
     let o2: Out = serde_json::from_str(lines[1]).unwrap();
     assert!(o1.set_size <= 1);
