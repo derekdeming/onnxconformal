@@ -21,13 +21,21 @@ impl TextTokenizer {
         let tk = tokenizers::Tokenizer::from_file(&opts.tokenizer)
             .map_err(|e| anyhow::anyhow!("failed to load tokenizer: {e}"))
             .with_context(|| format!("tokenizer file: {}", &opts.tokenizer))?;
-        Ok(Self { tk, max_len: opts.max_len, truncation: opts.truncation, padding: opts.padding })
+        Ok(Self {
+            tk,
+            max_len: opts.max_len,
+            truncation: opts.truncation,
+            padding: opts.padding,
+        })
     }
 
     /// Encodes raw text into token IDs (i64). If `max_len` is set, applies
     /// manual truncation; if `padding` is true and `max_len` is set, pads with 0s.
     pub fn encode_ids_i64(&self, text: &str) -> Result<Vec<i64>> {
-        let enc = self.tk.encode(text, true).map_err(|e| anyhow::anyhow!("tokenize failed: {e}"))?;
+        let enc = self
+            .tk
+            .encode(text, true)
+            .map_err(|e| anyhow::anyhow!("tokenize failed: {e}"))?;
         let mut ids: Vec<i64> = enc.get_ids().iter().map(|&v| v as i64).collect();
         self.apply_pad_trunc(&mut ids);
         Ok(ids)
@@ -36,9 +44,16 @@ impl TextTokenizer {
     /// Encodes and returns (ids, attention_mask, type_ids) as i64 vectors,
     /// applying the same truncation/padding policy to all.
     pub fn encode_with_aux_i64(&self, text: &str) -> Result<(Vec<i64>, Vec<i64>, Vec<i64>)> {
-        let enc = self.tk.encode(text, true).map_err(|e| anyhow::anyhow!("tokenize failed: {e}"))?;
+        let enc = self
+            .tk
+            .encode(text, true)
+            .map_err(|e| anyhow::anyhow!("tokenize failed: {e}"))?;
         let mut ids: Vec<i64> = enc.get_ids().iter().map(|&v| v as i64).collect();
-        let mut mask: Vec<i64> = enc.get_attention_mask().iter().map(|&v| (v as i64)).collect();
+        let mut mask: Vec<i64> = enc
+            .get_attention_mask()
+            .iter()
+            .map(|&v| (v as i64))
+            .collect();
         let mut type_ids: Vec<i64> = enc.get_type_ids().iter().map(|&v| (v as i64)).collect();
         self.apply_pad_trunc(&mut ids);
         // Ensure mask/type_ids match ids length after policy
@@ -49,8 +64,12 @@ impl TextTokenizer {
 
     fn apply_pad_trunc(&self, v: &mut Vec<i64>) {
         if let Some(m) = self.max_len {
-            if self.truncation && v.len() > m { v.truncate(m); }
-            if self.padding && v.len() < m { v.resize(m, 0i64); }
+            if self.truncation && v.len() > m {
+                v.truncate(m);
+            }
+            if self.padding && v.len() < m {
+                v.resize(m, 0i64);
+            }
         }
     }
 }

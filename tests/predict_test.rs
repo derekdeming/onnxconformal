@@ -13,7 +13,14 @@ struct ClassOut {
 /// Streaming classification prediction from probability rows.
 #[test]
 fn test_predict_classification_stream() {
-    let calib = CalibModel { task: "class".into(), alpha: 0.1, global_q: 0.2, per_label_q: None, labels: None, n: 10 };
+    let calib = CalibModel {
+        task: "class".into(),
+        alpha: 0.1,
+        global_q: 0.2,
+        per_label_q: None,
+        labels: None,
+        n: 10,
+    };
     let input = [
         serde_json::json!({"probs": [0.7, 0.2, 0.1]}),
         serde_json::json!({"probs": [0.81, 0.10, 0.09]}),
@@ -27,7 +34,13 @@ fn test_predict_classification_stream() {
     let mut out_buf: Vec<u8> = Vec::new();
     {
         let writer = BufWriter::new(&mut out_buf);
-        let cfg = PredConfig { max_set_size: None, include_probs: false, max_rows: None, #[cfg(feature = "onnx")] onnx: None };
+        let cfg = PredConfig {
+            max_set_size: None,
+            include_probs: false,
+            max_rows: None,
+            #[cfg(feature = "onnx")]
+            onnx: None,
+        };
         predict_classification(&calib, reader, writer, cfg).unwrap();
     }
     let out_str = String::from_utf8(out_buf).unwrap();
@@ -46,12 +59,22 @@ fn test_predict_classification_stream() {
 }
 
 #[derive(Debug, Deserialize)]
-struct RegrOut { lower: f64, upper: f64 }
+struct RegrOut {
+    lower: f64,
+    upper: f64,
+}
 
 /// Streaming regression interval prediction from `y_pred` rows.
 #[test]
 fn test_predict_regression_stream() {
-    let calib = CalibModel { task: "regr".into(), alpha: 0.1, global_q: 0.5, per_label_q: None, labels: None, n: 10 };
+    let calib = CalibModel {
+        task: "regr".into(),
+        alpha: 0.1,
+        global_q: 0.5,
+        per_label_q: None,
+        labels: None,
+        n: 10,
+    };
     let input = [
         serde_json::json!({"y_pred": 1.0}),
         serde_json::json!({"y_pred": -2.0}),
@@ -65,7 +88,13 @@ fn test_predict_regression_stream() {
     let mut out_buf: Vec<u8> = Vec::new();
     {
         let writer = BufWriter::new(&mut out_buf);
-        let cfg = PredConfig { max_set_size: None, include_probs: false, max_rows: None, #[cfg(feature = "onnx")] onnx: None };
+        let cfg = PredConfig {
+            max_set_size: None,
+            include_probs: false,
+            max_rows: None,
+            #[cfg(feature = "onnx")]
+            onnx: None,
+        };
         predict_regression(&calib, reader, writer, cfg).unwrap();
     }
     let out_str = String::from_utf8(out_buf).unwrap();

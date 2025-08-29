@@ -7,9 +7,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Creates a unique temporary file path for test artifacts.
 fn tmp_file(name: &str) -> std::path::PathBuf {
-    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
     let mut p = std::env::temp_dir();
-    p.push(format!("onnxconformal_class_mondrian_{}_{}.jsonl", name, ts));
+    p.push(format!(
+        "onnxconformal_class_mondrian_{}_{}.jsonl",
+        name, ts
+    ));
     p
 }
 
@@ -23,7 +29,8 @@ fn test_calibrate_classification_logits_and_labels_mondrian() {
         writeln!(
             f,
             "{}",
-            serde_json::json!({"labels":["ham","phish"], "logits":[2.0, 0.0], "label":"ham"}).to_string()
+            serde_json::json!({"labels":["ham","phish"], "logits":[2.0, 0.0], "label":"ham"})
+                .to_string()
         )
         .unwrap();
         writeln!(
@@ -40,14 +47,29 @@ fn test_calibrate_classification_logits_and_labels_mondrian() {
         .unwrap();
     }
 
-    let cfg = CalibConfig { alpha: 0.2, mondrian: true, max_rows: None, #[cfg(feature = "onnx")] onnx: None };
-    let model = CalibModel::fit_from_file(path.to_str().unwrap(), CalibFileKind::Classification, cfg).unwrap();
+    let cfg = CalibConfig {
+        alpha: 0.2,
+        mondrian: true,
+        max_rows: None,
+        #[cfg(feature = "onnx")]
+        onnx: None,
+    };
+    let model =
+        CalibModel::fit_from_file(path.to_str().unwrap(), CalibFileKind::Classification, cfg)
+            .unwrap();
     assert_eq!(model.task, "class");
     assert_eq!(model.alpha, 0.2);
-    assert_eq!(model.labels.as_deref(), Some(&["ham".to_string(), "phish".to_string()][..]));
+    assert_eq!(
+        model.labels.as_deref(),
+        Some(&["ham".to_string(), "phish".to_string()][..])
+    );
     assert!(model.per_label_q.is_some());
 
-    let logits = vec![(vec![2.0, 0.0], 0usize), (vec![-1.0, 1.0], 1usize), (vec![1.5, 0.5], 0usize)];
+    let logits = vec![
+        (vec![2.0, 0.0], 0usize),
+        (vec![-1.0, 1.0], 1usize),
+        (vec![1.5, 0.5], 0usize),
+    ];
     let mut scores = Vec::new();
     for (lg, li) in logits {
         let p = softmax(&lg);

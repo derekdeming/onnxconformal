@@ -7,7 +7,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Creates a unique temporary file path for test artifacts.
 fn tmp_file(name: &str) -> PathBuf {
-    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
     let mut p = std::env::temp_dir();
     p.push(format!("onnxconformal_test_{}_{}.jsonl", name, ts));
     p
@@ -20,13 +23,36 @@ fn test_calibrate_classification() {
     let path = tmp_file("class");
     {
         let mut f = fs::File::create(&path).unwrap();
-        writeln!(f, "{}", serde_json::json!({"probs": [0.6, 0.4], "label_index": 0}).to_string()).unwrap();
-        writeln!(f, "{}", serde_json::json!({"probs": [0.2, 0.8], "label_index": 1}).to_string()).unwrap();
-        writeln!(f, "{}", serde_json::json!({"probs": [0.7, 0.3], "label_index": 0}).to_string()).unwrap();
+        writeln!(
+            f,
+            "{}",
+            serde_json::json!({"probs": [0.6, 0.4], "label_index": 0}).to_string()
+        )
+        .unwrap();
+        writeln!(
+            f,
+            "{}",
+            serde_json::json!({"probs": [0.2, 0.8], "label_index": 1}).to_string()
+        )
+        .unwrap();
+        writeln!(
+            f,
+            "{}",
+            serde_json::json!({"probs": [0.7, 0.3], "label_index": 0}).to_string()
+        )
+        .unwrap();
     }
 
-    let cfg = CalibConfig { alpha: 0.1, mondrian: false, max_rows: None, #[cfg(feature = "onnx")] onnx: None };
-    let model = CalibModel::fit_from_file(path.to_str().unwrap(), CalibFileKind::Classification, cfg).unwrap();
+    let cfg = CalibConfig {
+        alpha: 0.1,
+        mondrian: false,
+        max_rows: None,
+        #[cfg(feature = "onnx")]
+        onnx: None,
+    };
+    let model =
+        CalibModel::fit_from_file(path.to_str().unwrap(), CalibFileKind::Classification, cfg)
+            .unwrap();
     assert_eq!(model.task, "class");
     assert_eq!(model.alpha, 0.1);
     assert_eq!(model.per_label_q, None);
@@ -51,13 +77,35 @@ fn test_calibrate_regression() {
     let path = tmp_file("regr");
     {
         let mut f = fs::File::create(&path).unwrap();
-        writeln!(f, "{}", serde_json::json!({"y_true": 1.0, "y_pred": 1.2}).to_string()).unwrap();
-        writeln!(f, "{}", serde_json::json!({"y_true": 0.0, "y_pred": -0.1}).to_string()).unwrap();
-        writeln!(f, "{}", serde_json::json!({"y_true": -1.0, "y_pred": -0.7}).to_string()).unwrap();
+        writeln!(
+            f,
+            "{}",
+            serde_json::json!({"y_true": 1.0, "y_pred": 1.2}).to_string()
+        )
+        .unwrap();
+        writeln!(
+            f,
+            "{}",
+            serde_json::json!({"y_true": 0.0, "y_pred": -0.1}).to_string()
+        )
+        .unwrap();
+        writeln!(
+            f,
+            "{}",
+            serde_json::json!({"y_true": -1.0, "y_pred": -0.7}).to_string()
+        )
+        .unwrap();
     }
 
-    let cfg = CalibConfig { alpha: 0.2, mondrian: false, max_rows: None, #[cfg(feature = "onnx")] onnx: None };
-    let model = CalibModel::fit_from_file(path.to_str().unwrap(), CalibFileKind::Regression, cfg).unwrap();
+    let cfg = CalibConfig {
+        alpha: 0.2,
+        mondrian: false,
+        max_rows: None,
+        #[cfg(feature = "onnx")]
+        onnx: None,
+    };
+    let model =
+        CalibModel::fit_from_file(path.to_str().unwrap(), CalibFileKind::Regression, cfg).unwrap();
     assert_eq!(model.task, "regr");
     assert_eq!(model.alpha, 0.2);
     assert!(model.per_label_q.is_none());

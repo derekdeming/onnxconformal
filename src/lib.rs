@@ -1,8 +1,8 @@
-pub mod nonconformity;
 pub mod calibrator;
-pub mod predictor;
-pub mod utils;
+pub mod nonconformity;
 #[cfg(feature = "onnx")]
 pub mod onnx;
+pub mod predictor;
 #[cfg(feature = "text")]
 pub mod text;
+pub mod utils;

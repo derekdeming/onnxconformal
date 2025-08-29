@@ -1,5 +1,7 @@
-use onnxconformal_rs::utils::{softmax, ensure_prob_vector, conformal_quantile, argmax, jsonl_deser, jsonl_ser};
-use serde::{Serialize, Deserialize};
+use onnxconformal_rs::utils::{
+    argmax, conformal_quantile, ensure_prob_vector, jsonl_deser, jsonl_ser, softmax,
+};
+use serde::{Deserialize, Serialize};
 use std::io::{BufReader, BufWriter, Cursor};
 
 #[test]
@@ -35,7 +37,9 @@ fn test_argmax() {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct Row { a: i32 }
+struct Row {
+    a: i32,
+}
 
 #[test]
 fn test_jsonl_roundtrip() {
@@ -49,4 +53,3 @@ fn test_jsonl_roundtrip() {
     let rows: Vec<Row> = jsonl_deser(reader, None).unwrap();
     assert_eq!(rows, vec![Row { a: 1 }]);
 }
-

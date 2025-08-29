@@ -66,8 +66,18 @@ impl OnnxRunner {
 
         let input_name = opts.input_name.clone().unwrap_or(default_in.clone());
         let output_name = opts.output_name.clone().unwrap_or(default_out.clone());
-        let output_names = opts.output_names.clone().unwrap_or_else(|| vec![default_out]);
-        Ok(Self { session, input_name, output_name, in_dtype, out_dtype, output_names })
+        let output_names = opts
+            .output_names
+            .clone()
+            .unwrap_or_else(|| vec![default_out]);
+        Ok(Self {
+            session,
+            input_name,
+            output_name,
+            in_dtype,
+            out_dtype,
+            output_names,
+        })
     }
 
     /// Runs inference for a single 1‑D feature vector (batch size 1) of f32.
@@ -79,12 +89,18 @@ impl OnnxRunner {
             .unwrap_or(self.in_dtype);
         let inputs_val = match in_dtype {
             TensorElementType::Float32 => {
-                let tensor = ort::value::Tensor::<f32>::from_array(([1usize, x.len()], x.to_vec().into_boxed_slice()))?;
+                let tensor = ort::value::Tensor::<f32>::from_array((
+                    [1usize, x.len()],
+                    x.to_vec().into_boxed_slice(),
+                ))?;
                 ort::inputs![ self.input_name.as_str() => tensor ]
             }
             TensorElementType::Bool => {
                 let v: Vec<bool> = x.iter().map(|&f| f > 0.0).collect();
-                let tensor = ort::value::Tensor::<bool>::from_array(([1usize, v.len()], v.into_boxed_slice()))?;
+                let tensor = ort::value::Tensor::<bool>::from_array((
+                    [1usize, v.len()],
+                    v.into_boxed_slice(),
+                ))?;
                 ort::inputs![ self.input_name.as_str() => tensor ]
             }
             other => anyhow::bail!("unsupported input dtype for f32 input: {:?}", other),
@@ -103,12 +119,18 @@ impl OnnxRunner {
             .unwrap_or(self.in_dtype);
         let inputs_val = match in_dtype {
             TensorElementType::Int64 => {
-                let tensor = ort::value::Tensor::<i64>::from_array(([1usize, x.len()], x.to_vec().into_boxed_slice()))?;
+                let tensor = ort::value::Tensor::<i64>::from_array((
+                    [1usize, x.len()],
+                    x.to_vec().into_boxed_slice(),
+                ))?;
                 ort::inputs![ self.input_name.as_str() => tensor ]
             }
             TensorElementType::Int32 => {
                 let v: Vec<i32> = x.iter().map(|&v| v as i32).collect();
-                let tensor = ort::value::Tensor::<i32>::from_array(([1usize, v.len()], v.into_boxed_slice()))?;
+                let tensor = ort::value::Tensor::<i32>::from_array((
+                    [1usize, v.len()],
+                    v.into_boxed_slice(),
+                ))?;
                 ort::inputs![ self.input_name.as_str() => tensor ]
             }
             other => anyhow::bail!("unsupported input dtype for i64 input: {:?}", other),
@@ -122,18 +144,34 @@ impl OnnxRunner {
         // If explicit names are provided, they must resolve; otherwise default to first.
         if !self.output_name.is_empty() || !self.output_names.is_empty() {
             let mut names: Vec<&str> = Vec::new();
-            if !self.output_name.is_empty() { names.push(self.output_name.as_str()); }
-            for n in &self.output_names { names.push(n.as_str()); }
+            if !self.output_name.is_empty() {
+                names.push(self.output_name.as_str());
+            }
+            for n in &self.output_names {
+                names.push(n.as_str());
+            }
             for cand in names {
                 if let Some(info) = self.session.outputs.iter().find(|o| o.name == cand) {
-                    let ty = match &info.output_type { ValueType::Tensor { ty, .. } => *ty, _ => self.out_dtype };
+                    let ty = match &info.output_type {
+                        ValueType::Tensor { ty, .. } => *ty,
+                        _ => self.out_dtype,
+                    };
                     return Ok((cand.to_string(), ty));
                 }
             }
-            anyhow::bail!("requested output not found; use --onnx-output/--onnx-outputs with a valid name");
+            anyhow::bail!(
+                "requested output not found; use --onnx-output/--onnx-outputs with a valid name"
+            );
         }
-        let info = self.session.outputs.get(0).ok_or_else(|| anyhow::anyhow!("model has no outputs"))?;
-        let ty = match &info.output_type { ValueType::Tensor { ty, .. } => *ty, _ => self.out_dtype };
+        let info = self
+            .session
+            .outputs
+            .get(0)
+            .ok_or_else(|| anyhow::anyhow!("model has no outputs"))?;
+        let ty = match &info.output_type {
+            ValueType::Tensor { ty, .. } => *ty,
+            _ => self.out_dtype,
+        };
         Ok((info.name.clone(), ty))
     }
 
@@ -148,12 +186,18 @@ impl OnnxRunner {
                 let dt1 = self.dtype_for_input(n1).unwrap_or(T::Int64);
                 let inputs_val = match dt1 {
                     T::Int64 => {
-                        let t1 = ort::value::Tensor::<i64>::from_array(([1usize, x1.len()], x1.to_vec().into_boxed_slice()))?;
+                        let t1 = ort::value::Tensor::<i64>::from_array((
+                            [1usize, x1.len()],
+                            x1.to_vec().into_boxed_slice(),
+                        ))?;
                         ort::inputs![ n1 => t1 ]
                     }
                     T::Int32 => {
                         let v1: Vec<i32> = x1.iter().map(|&v| v as i32).collect();
-                        let t1 = ort::value::Tensor::<i32>::from_array(([1usize, v1.len()], v1.into_boxed_slice()))?;
+                        let t1 = ort::value::Tensor::<i32>::from_array((
+                            [1usize, v1.len()],
+                            v1.into_boxed_slice(),
+                        ))?;
                         ort::inputs![ n1 => t1 ]
                     }
                     other => anyhow::bail!("unsupported input dtype for {}: {:?}", n1, other),
@@ -169,27 +213,51 @@ impl OnnxRunner {
                 let d2 = self.dtype_for_input(n2).unwrap_or(T::Int64);
                 let inputs_val = match (d1, d2) {
                     (T::Int64, T::Int64) => {
-                        let t1 = ort::value::Tensor::<i64>::from_array(([1usize, x1.len()], x1.to_vec().into_boxed_slice()))?;
-                        let t2 = ort::value::Tensor::<i64>::from_array(([1usize, x2.len()], x2.to_vec().into_boxed_slice()))?;
+                        let t1 = ort::value::Tensor::<i64>::from_array((
+                            [1usize, x1.len()],
+                            x1.to_vec().into_boxed_slice(),
+                        ))?;
+                        let t2 = ort::value::Tensor::<i64>::from_array((
+                            [1usize, x2.len()],
+                            x2.to_vec().into_boxed_slice(),
+                        ))?;
                         ort::inputs![ n1 => t1, n2 => t2 ]
                     }
                     (T::Int32, T::Int64) => {
                         let v1: Vec<i32> = x1.iter().map(|&v| v as i32).collect();
-                        let t1 = ort::value::Tensor::<i32>::from_array(([1usize, v1.len()], v1.into_boxed_slice()))?;
-                        let t2 = ort::value::Tensor::<i64>::from_array(([1usize, x2.len()], x2.to_vec().into_boxed_slice()))?;
+                        let t1 = ort::value::Tensor::<i32>::from_array((
+                            [1usize, v1.len()],
+                            v1.into_boxed_slice(),
+                        ))?;
+                        let t2 = ort::value::Tensor::<i64>::from_array((
+                            [1usize, x2.len()],
+                            x2.to_vec().into_boxed_slice(),
+                        ))?;
                         ort::inputs![ n1 => t1, n2 => t2 ]
                     }
                     (T::Int64, T::Int32) => {
-                        let t1 = ort::value::Tensor::<i64>::from_array(([1usize, x1.len()], x1.to_vec().into_boxed_slice()))?;
+                        let t1 = ort::value::Tensor::<i64>::from_array((
+                            [1usize, x1.len()],
+                            x1.to_vec().into_boxed_slice(),
+                        ))?;
                         let v2: Vec<i32> = x2.iter().map(|&v| v as i32).collect();
-                        let t2 = ort::value::Tensor::<i32>::from_array(([1usize, v2.len()], v2.into_boxed_slice()))?;
+                        let t2 = ort::value::Tensor::<i32>::from_array((
+                            [1usize, v2.len()],
+                            v2.into_boxed_slice(),
+                        ))?;
                         ort::inputs![ n1 => t1, n2 => t2 ]
                     }
                     (T::Int32, T::Int32) => {
                         let v1: Vec<i32> = x1.iter().map(|&v| v as i32).collect();
                         let v2: Vec<i32> = x2.iter().map(|&v| v as i32).collect();
-                        let t1 = ort::value::Tensor::<i32>::from_array(([1usize, v1.len()], v1.into_boxed_slice()))?;
-                        let t2 = ort::value::Tensor::<i32>::from_array(([1usize, v2.len()], v2.into_boxed_slice()))?;
+                        let t1 = ort::value::Tensor::<i32>::from_array((
+                            [1usize, v1.len()],
+                            v1.into_boxed_slice(),
+                        ))?;
+                        let t2 = ort::value::Tensor::<i32>::from_array((
+                            [1usize, v2.len()],
+                            v2.into_boxed_slice(),
+                        ))?;
                         ort::inputs![ n1 => t1, n2 => t2 ]
                     }
                     other => anyhow::bail!("unsupported input dtype combination: {:?}", other),
@@ -206,21 +274,55 @@ impl OnnxRunner {
                 let d2 = self.dtype_for_input(n2).unwrap_or(T::Int64);
                 let d3 = self.dtype_for_input(n3).unwrap_or(T::Int64);
                 let to_i32 = |xs: &[i64]| xs.iter().map(|&v| v as i32).collect::<Vec<i32>>();
-                let t1_i64 = ort::value::Tensor::<i64>::from_array(([1usize, x1.len()], x1.to_vec().into_boxed_slice()))?;
-                let t1_i32 = ort::value::Tensor::<i32>::from_array(([1usize, x1.len()], to_i32(x1).into_boxed_slice()))?;
-                let t2_i64 = ort::value::Tensor::<i64>::from_array(([1usize, x2.len()], x2.to_vec().into_boxed_slice()))?;
-                let t2_i32 = ort::value::Tensor::<i32>::from_array(([1usize, x2.len()], to_i32(x2).into_boxed_slice()))?;
-                let t3_i64 = ort::value::Tensor::<i64>::from_array(([1usize, x3.len()], x3.to_vec().into_boxed_slice()))?;
-                let t3_i32 = ort::value::Tensor::<i32>::from_array(([1usize, x3.len()], to_i32(x3).into_boxed_slice()))?;
+                let t1_i64 = ort::value::Tensor::<i64>::from_array((
+                    [1usize, x1.len()],
+                    x1.to_vec().into_boxed_slice(),
+                ))?;
+                let t1_i32 = ort::value::Tensor::<i32>::from_array((
+                    [1usize, x1.len()],
+                    to_i32(x1).into_boxed_slice(),
+                ))?;
+                let t2_i64 = ort::value::Tensor::<i64>::from_array((
+                    [1usize, x2.len()],
+                    x2.to_vec().into_boxed_slice(),
+                ))?;
+                let t2_i32 = ort::value::Tensor::<i32>::from_array((
+                    [1usize, x2.len()],
+                    to_i32(x2).into_boxed_slice(),
+                ))?;
+                let t3_i64 = ort::value::Tensor::<i64>::from_array((
+                    [1usize, x3.len()],
+                    x3.to_vec().into_boxed_slice(),
+                ))?;
+                let t3_i32 = ort::value::Tensor::<i32>::from_array((
+                    [1usize, x3.len()],
+                    to_i32(x3).into_boxed_slice(),
+                ))?;
                 let inputs_val = match (d1, d2, d3) {
-                    (T::Int64, T::Int64, T::Int64) => ort::inputs![ n1 => t1_i64, n2 => t2_i64, n3 => t3_i64 ],
-                    (T::Int32, T::Int64, T::Int64) => ort::inputs![ n1 => t1_i32, n2 => t2_i64, n3 => t3_i64 ],
-                    (T::Int64, T::Int32, T::Int64) => ort::inputs![ n1 => t1_i64, n2 => t2_i32, n3 => t3_i64 ],
-                    (T::Int64, T::Int64, T::Int32) => ort::inputs![ n1 => t1_i64, n2 => t2_i64, n3 => t3_i32 ],
-                    (T::Int32, T::Int32, T::Int64) => ort::inputs![ n1 => t1_i32, n2 => t2_i32, n3 => t3_i64 ],
-                    (T::Int32, T::Int64, T::Int32) => ort::inputs![ n1 => t1_i32, n2 => t2_i64, n3 => t3_i32 ],
-                    (T::Int64, T::Int32, T::Int32) => ort::inputs![ n1 => t1_i64, n2 => t2_i32, n3 => t3_i32 ],
-                    (T::Int32, T::Int32, T::Int32) => ort::inputs![ n1 => t1_i32, n2 => t2_i32, n3 => t3_i32 ],
+                    (T::Int64, T::Int64, T::Int64) => {
+                        ort::inputs![ n1 => t1_i64, n2 => t2_i64, n3 => t3_i64 ]
+                    }
+                    (T::Int32, T::Int64, T::Int64) => {
+                        ort::inputs![ n1 => t1_i32, n2 => t2_i64, n3 => t3_i64 ]
+                    }
+                    (T::Int64, T::Int32, T::Int64) => {
+                        ort::inputs![ n1 => t1_i64, n2 => t2_i32, n3 => t3_i64 ]
+                    }
+                    (T::Int64, T::Int64, T::Int32) => {
+                        ort::inputs![ n1 => t1_i64, n2 => t2_i64, n3 => t3_i32 ]
+                    }
+                    (T::Int32, T::Int32, T::Int64) => {
+                        ort::inputs![ n1 => t1_i32, n2 => t2_i32, n3 => t3_i64 ]
+                    }
+                    (T::Int32, T::Int64, T::Int32) => {
+                        ort::inputs![ n1 => t1_i32, n2 => t2_i64, n3 => t3_i32 ]
+                    }
+                    (T::Int64, T::Int32, T::Int32) => {
+                        ort::inputs![ n1 => t1_i64, n2 => t2_i32, n3 => t3_i32 ]
+                    }
+                    (T::Int32, T::Int32, T::Int32) => {
+                        ort::inputs![ n1 => t1_i32, n2 => t2_i32, n3 => t3_i32 ]
+                    }
                     other => anyhow::bail!("unsupported input dtype combination: {:?}", other),
                 };
                 let (out_name, out_dtype) = self.select_output_name_and_dtype()?;
@@ -232,31 +334,46 @@ impl OnnxRunner {
     }
 
     fn dtype_for_input(&self, name: &str) -> Option<TensorElementType> {
-        self.session.inputs.iter().find(|i| i.name == name).and_then(|i| match &i.input_type { ValueType::Tensor { ty, .. } => Some(*ty), _ => None })
+        self.session
+            .inputs
+            .iter()
+            .find(|i| i.name == name)
+            .and_then(|i| match &i.input_type {
+                ValueType::Tensor { ty, .. } => Some(*ty),
+                _ => None,
+            })
     }
 
-    fn extract_output_by_name(outputs: SessionOutputs, out_dtype: TensorElementType, output_name: &str) -> Result<Vec<f32>> {
+    fn extract_output_by_name(
+        outputs: SessionOutputs,
+        out_dtype: TensorElementType,
+        output_name: &str,
+    ) -> Result<Vec<f32>> {
         let value = outputs
             .get(output_name)
             .ok_or_else(|| anyhow::anyhow!("output '{}' missing from model run", output_name))?;
         let vec_f32: Vec<f32> = match out_dtype {
             TensorElementType::Float32 => {
-                let tref: ort::value::TensorRef<f32> = value.downcast_ref().context("output not f32 tensor")?;
+                let tref: ort::value::TensorRef<f32> =
+                    value.downcast_ref().context("output not f32 tensor")?;
                 let (_, data) = tref.extract_tensor();
                 data.to_vec()
             }
             TensorElementType::Bool => {
-                let tref: ort::value::TensorRef<bool> = value.downcast_ref().context("output not bool tensor")?;
+                let tref: ort::value::TensorRef<bool> =
+                    value.downcast_ref().context("output not bool tensor")?;
                 let (_, data) = tref.extract_tensor();
                 data.iter().map(|&b| if b { 1.0 } else { 0.0 }).collect()
             }
             TensorElementType::Int64 => {
-                let tref: ort::value::TensorRef<i64> = value.downcast_ref().context("output not i64 tensor")?;
+                let tref: ort::value::TensorRef<i64> =
+                    value.downcast_ref().context("output not i64 tensor")?;
                 let (_, data) = tref.extract_tensor();
                 data.iter().map(|&v| v as f32).collect()
             }
             TensorElementType::Int32 => {
-                let tref: ort::value::TensorRef<i32> = value.downcast_ref().context("output not i32 tensor")?;
+                let tref: ort::value::TensorRef<i32> =
+                    value.downcast_ref().context("output not i32 tensor")?;
                 let (_, data) = tref.extract_tensor();
                 data.iter().map(|&v| v as f32).collect()
             }

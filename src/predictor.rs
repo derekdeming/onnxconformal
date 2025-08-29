@@ -27,27 +27,37 @@ pub struct ClassPredRow {
 
 #[derive(Debug, Clone, Deserialize)]
 /// Input row for regression prediction from a point estimate `y_pred`.
-pub struct RegrPredRow { pub y_pred: f64 }
+pub struct RegrPredRow {
+    pub y_pred: f64,
+}
 
 #[cfg(feature = "onnx")]
 #[derive(Debug, Clone, Deserialize)]
 /// ONNX-backed input row for classification prediction (`x` features).
-pub struct ClassPredRowOnnx { pub x: Vec<f32> }
+pub struct ClassPredRowOnnx {
+    pub x: Vec<f32>,
+}
 
 #[cfg(all(feature = "onnx", feature = "text"))]
 #[derive(Debug, Clone, Deserialize)]
 /// ONNX-backed input row for classification prediction from raw text.
-pub struct ClassPredRowOnnxText { pub text: String }
+pub struct ClassPredRowOnnxText {
+    pub text: String,
+}
 
 #[cfg(feature = "onnx")]
 #[derive(Debug, Clone, Deserialize)]
 /// ONNX-backed input row for regression prediction (`x` features).
-pub struct RegrPredRowOnnx { pub x: Vec<f32> }
+pub struct RegrPredRowOnnx {
+    pub x: Vec<f32>,
+}
 
 #[cfg(all(feature = "onnx", feature = "text"))]
 #[derive(Debug, Clone, Deserialize)]
 /// ONNX-backed input row for regression prediction from raw text.
-pub struct RegrPredRowOnnxText { pub text: String }
+pub struct RegrPredRowOnnxText {
+    pub text: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 /// Output record for classification prediction sets.
@@ -104,7 +114,14 @@ fn build_class_output(
     } else {
         None
     };
-    ClassPredOut { set_indices: set.clone(), set_labels, set_size: set.len(), max_prob_label: max_label, max_prob_index: max_idx, set_probs }
+    ClassPredOut {
+        set_indices: set.clone(),
+        set_labels,
+        set_size: set.len(),
+        max_prob_label: max_label,
+        max_prob_index: max_idx,
+        set_probs,
+    }
 }
 
 /// Produces conformal prediction sets for classification.
@@ -114,7 +131,9 @@ pub fn predict_classification<R: BufRead, W: Write>(
     mut writer: W,
     cfg: PredConfig,
 ) -> Result<()> {
-    if calib.task != "class" { anyhow::bail!("calib is not classification"); }
+    if calib.task != "class" {
+        anyhow::bail!("calib is not classification");
+    }
     #[cfg(feature = "onnx")]
     if let Some(onnx) = cfg.onnx.clone() {
         #[cfg(feature = "text")]
@@ -127,9 +146,15 @@ pub fn predict_classification<R: BufRead, W: Write>(
     let q = calib.global_q;
     let mut count = 0usize;
     for line in reader.lines() {
-        if let Some(m) = cfg.max_rows { if count >= m { break; } }
+        if let Some(m) = cfg.max_rows {
+            if count >= m {
+                break;
+            }
+        }
         let l = line?;
-        if l.trim().is_empty() { continue; }
+        if l.trim().is_empty() {
+            continue;
+        }
         count += 1;
         let r: ClassPredRow = serde_json::from_str(&l)?;
         let probs = match (r.probs, r.logits) {
@@ -137,8 +162,16 @@ pub fn predict_classification<R: BufRead, W: Write>(
             (None, Some(l)) => ensure_prob_vector(softmax(&l)),
             _ => anyhow::bail!("row missing probs/logits"),
         };
-        if probs.is_empty() { continue; }
-        let out = build_class_output(&probs, label_names.as_ref(), q, cfg.max_set_size, cfg.include_probs);
+        if probs.is_empty() {
+            continue;
+        }
+        let out = build_class_output(
+            &probs,
+            label_names.as_ref(),
+            q,
+            cfg.max_set_size,
+            cfg.include_probs,
+        );
         jsonl_ser(&mut writer, &out)?;
     }
     Ok(())
@@ -151,7 +184,9 @@ pub fn predict_regression<R: BufRead, W: Write>(
     mut writer: W,
     cfg: PredConfig,
 ) -> Result<()> {
-    if calib.task != "regr" { anyhow::bail!("calib is not regression"); }
+    if calib.task != "regr" {
+        anyhow::bail!("calib is not regression");
+    }
     #[cfg(feature = "onnx")]
     if let Some(onnx) = cfg.onnx.clone() {
         #[cfg(feature = "text")]
@@ -163,14 +198,25 @@ pub fn predict_regression<R: BufRead, W: Write>(
     let q = calib.global_q;
     let mut count = 0usize;
     for line in reader.lines() {
-        if let Some(m) = cfg.max_rows { if count >= m { break; } }
+        if let Some(m) = cfg.max_rows {
+            if count >= m {
+                break;
+            }
+        }
         let l = line?;
-        if l.trim().is_empty() { continue; }
+        if l.trim().is_empty() {
+            continue;
+        }
         count += 1;
         let r: RegrPredRow = serde_json::from_str(&l)?;
         let lower = r.y_pred - q;
         let upper = r.y_pred + q;
-        let out = RegrPredOut { y_pred: r.y_pred, lower, upper, width: upper - lower };
+        let out = RegrPredOut {
+            y_pred: r.y_pred,
+            lower,
+            upper,
+            width: upper - lower,
+        };
         jsonl_ser(&mut writer, &out)?;
     }
     Ok(())
@@ -191,16 +237,30 @@ fn predict_classification_onnx<R: BufRead, W: Write>(
     let q = calib.global_q;
     let mut count = 0usize;
     for line in reader.lines() {
-        if let Some(m) = cfg.max_rows { if count >= m { break; } }
+        if let Some(m) = cfg.max_rows {
+            if count >= m {
+                break;
+            }
+        }
         let l = line?;
-        if l.trim().is_empty() { continue; }
+        if l.trim().is_empty() {
+            continue;
+        }
         count += 1;
         let r: ClassPredRowOnnx = serde_json::from_str(&l)?;
         let out = runner.infer_vec_f32(&r.x)?;
         let logits_f64: Vec<f64> = out.iter().map(|&v| v as f64).collect();
         let probs = ensure_prob_vector(softmax(&logits_f64));
-        if probs.is_empty() { continue; }
-        let out = build_class_output(&probs, label_names.as_ref(), q, cfg.max_set_size, cfg.include_probs);
+        if probs.is_empty() {
+            continue;
+        }
+        let out = build_class_output(
+            &probs,
+            label_names.as_ref(),
+            q,
+            cfg.max_set_size,
+            cfg.include_probs,
+        );
         jsonl_ser(&mut writer, &out)?;
     }
     Ok(())
@@ -224,9 +284,15 @@ fn predict_classification_onnx_text<R: BufRead, W: Write>(
     let q = calib.global_q;
     let mut count = 0usize;
     for line in reader.lines() {
-        if let Some(m) = cfg.max_rows { if count >= m { break; } }
+        if let Some(m) = cfg.max_rows {
+            if count >= m {
+                break;
+            }
+        }
         let l = line?;
-        if l.trim().is_empty() { continue; }
+        if l.trim().is_empty() {
+            continue;
+        }
         count += 1;
         let r: ClassPredRowOnnxText = serde_json::from_str(&l)?;
         let (ids, mask, type_ids) = tok.encode_with_aux_i64(&r.text)?;
@@ -244,8 +310,16 @@ fn predict_classification_onnx_text<R: BufRead, W: Write>(
         };
         let logits_f64: Vec<f64> = out.iter().map(|&v| v as f64).collect();
         let probs = ensure_prob_vector(softmax(&logits_f64));
-        if probs.is_empty() { continue; }
-        let out = build_class_output(&probs, label_names.as_ref(), q, cfg.max_set_size, cfg.include_probs);
+        if probs.is_empty() {
+            continue;
+        }
+        let out = build_class_output(
+            &probs,
+            label_names.as_ref(),
+            q,
+            cfg.max_set_size,
+            cfg.include_probs,
+        );
         jsonl_ser(&mut writer, &out)?;
     }
     Ok(())
@@ -265,17 +339,30 @@ fn predict_regression_onnx<R: BufRead, W: Write>(
     let q = calib.global_q;
     let mut count = 0usize;
     for line in reader.lines() {
-        if let Some(m) = cfg.max_rows { if count >= m { break; } }
+        if let Some(m) = cfg.max_rows {
+            if count >= m {
+                break;
+            }
+        }
         let l = line?;
-        if l.trim().is_empty() { continue; }
+        if l.trim().is_empty() {
+            continue;
+        }
         count += 1;
         let r: RegrPredRowOnnx = serde_json::from_str(&l)?;
         let out = runner.infer_vec_f32(&r.x)?;
-        if out.is_empty() { continue; }
+        if out.is_empty() {
+            continue;
+        }
         let y_pred = out[0] as f64;
         let lower = y_pred - q;
         let upper = y_pred + q;
-        let out = RegrPredOut { y_pred, lower, upper, width: upper - lower };
+        let out = RegrPredOut {
+            y_pred,
+            lower,
+            upper,
+            width: upper - lower,
+        };
         jsonl_ser(&mut writer, &out)?;
     }
     Ok(())
@@ -298,17 +385,29 @@ fn predict_regression_onnx_text<R: BufRead, W: Write>(
     let q = calib.global_q;
     let mut count = 0usize;
     for line in reader.lines() {
-        if let Some(m) = cfg.max_rows { if count >= m { break; } }
+        if let Some(m) = cfg.max_rows {
+            if count >= m {
+                break;
+            }
+        }
         let l = line?;
-        if l.trim().is_empty() { continue; }
+        if l.trim().is_empty() {
+            continue;
+        }
         count += 1;
         let r: RegrPredRowOnnxText = serde_json::from_str(&l)?;
         let (ids, mask, type_ids) = tok.encode_with_aux_i64(&r.text)?;
         let out = if let Some(names) = &onnx.input_names {
             match names.as_slice() {
                 [id] => runner.infer_i64_named(&[(id.as_str(), &ids)])?,
-                [id, maskn] => runner.infer_i64_named(&[(id.as_str(), &ids), (maskn.as_str(), &mask)])?,
-                [id, maskn, typen] => runner.infer_i64_named(&[(id.as_str(), &ids), (maskn.as_str(), &mask), (typen.as_str(), &type_ids)])?,
+                [id, maskn] => {
+                    runner.infer_i64_named(&[(id.as_str(), &ids), (maskn.as_str(), &mask)])?
+                }
+                [id, maskn, typen] => runner.infer_i64_named(&[
+                    (id.as_str(), &ids),
+                    (maskn.as_str(), &mask),
+                    (typen.as_str(), &type_ids),
+                ])?,
                 _ => anyhow::bail!("expected 1-3 --onnx-inputs for text models"),
             }
         } else if let Some(single) = onnx.input_name.as_ref() {
@@ -316,11 +415,18 @@ fn predict_regression_onnx_text<R: BufRead, W: Write>(
         } else {
             anyhow::bail!("text mode requires --onnx-input or --onnx-inputs");
         };
-        if out.is_empty() { continue; }
+        if out.is_empty() {
+            continue;
+        }
         let y_pred = out[0] as f64;
         let lower = y_pred - q;
         let upper = y_pred + q;
-        let out = RegrPredOut { y_pred, lower, upper, width: upper - lower };
+        let out = RegrPredOut {
+            y_pred,
+            lower,
+            upper,
+            width: upper - lower,
+        };
         jsonl_ser(&mut writer, &out)?;
     }
     Ok(())
