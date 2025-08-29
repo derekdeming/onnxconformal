@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::BufReader;
 
 #[derive(Debug, Clone)]
+/// Configuration for calibration from JSONL data.
 pub struct CalibConfig {
     pub alpha: f64,
     pub mondrian: bool,
@@ -16,9 +17,11 @@ pub struct CalibConfig {
 }
 
 #[derive(Debug, Clone, Copy)]
+/// Input file kind for calibration.
 pub enum CalibFileKind { Classification, Regression }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Persisted calibration model with global and optional per‑label thresholds.
 pub struct CalibModel {
     pub task: String,
     pub alpha: f64,
@@ -29,6 +32,7 @@ pub struct CalibModel {
 }
 
 impl CalibModel {
+    /// Fits a calibration model from a JSONL file.
     pub fn fit_from_file(path: &str, kind: CalibFileKind, cfg: CalibConfig) -> Result<Self> {
         match kind {
             CalibFileKind::Classification => {
@@ -58,6 +62,7 @@ impl CalibModel {
 }
 
 #[derive(Debug, Clone, Serialize)]
+/// Human‑readable summary of a calibration model.
 pub struct CalibSummary {
     pub task: String,
     pub alpha: f64,
@@ -99,6 +104,7 @@ struct ClassCalibRow {
     labels: Option<Vec<String>>,
 }
 
+/// Fits a classification calibration model from probabilities/logits JSONL.
 fn fit_class_from_jsonl(path: &str, cfg: CalibConfig) -> Result<CalibModel> {
     let reader = BufReader::new(File::open(path).with_context(|| "open class calib file")?);
     let rows: Vec<ClassCalibRow> = crate::utils::jsonl_deser(reader, cfg.max_rows)?;
@@ -181,6 +187,7 @@ struct RegrCalibRow {
     y_pred: f64,
 }
 
+/// Fits a regression calibration model from `y_true/y_pred` JSONL.
 fn fit_regr_from_jsonl(path: &str, cfg: CalibConfig) -> Result<CalibModel> {
     let reader = BufReader::new(File::open(path).with_context(|| "open regr calib file")?);
     let rows: Vec<RegrCalibRow> = jsonl_deser(reader, cfg.max_rows)?;
@@ -205,7 +212,6 @@ fn fit_regr_from_jsonl(path: &str, cfg: CalibConfig) -> Result<CalibModel> {
     })
 }
 
-// ===== ONNX-backed calibration (optional) =====
 #[cfg(feature = "onnx")]
 #[derive(Debug, Clone, Deserialize)]
 struct ClassCalibRowOnnx {
@@ -219,6 +225,8 @@ struct ClassCalibRowOnnx {
 }
 
 #[cfg(feature = "onnx")]
+/// Fits a classification calibration model by running an ONNX model over
+/// feature vectors (`x`) and using the output as logits.
 fn fit_class_from_jsonl_onnx(path: &str, cfg: CalibConfig, onnx: crate::onnx::OnnxOptions) -> Result<CalibModel> {
     use crate::onnx::OnnxRunner;
     let reader = BufReader::new(File::open(path).with_context(|| "open class calib file (onnx)")?);
@@ -239,7 +247,6 @@ fn fit_class_from_jsonl_onnx(path: &str, cfg: CalibConfig, onnx: crate::onnx::On
     for r in rows.iter() {
         let out = runner.infer_vec_f32(&r.x)?;
         if out.is_empty() { anyhow::bail!("onnx model produced empty output"); }
-        // Treat output vector as scores/logits; convert to probabilities.
         let logits_f64: Vec<f64> = out.iter().map(|&v| v as f64).collect();
         let probs = ensure_prob_vector(softmax(&logits_f64));
         let k = probs.len();
@@ -296,6 +303,8 @@ fn fit_class_from_jsonl_onnx(path: &str, cfg: CalibConfig, onnx: crate::onnx::On
 struct RegrCalibRowOnnx { x: Vec<f32>, y_true: f64 }
 
 #[cfg(feature = "onnx")]
+/// Fits a regression calibration model by running an ONNX model to obtain
+/// `y_pred` values for each feature vector.
 fn fit_regr_from_jsonl_onnx(path: &str, cfg: CalibConfig, onnx: crate::onnx::OnnxOptions) -> Result<CalibModel> {
     use crate::onnx::OnnxRunner;
     let reader = BufReader::new(File::open(path).with_context(|| "open regr calib file (onnx)")?);

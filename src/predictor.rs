@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Write};
 
 #[derive(Debug, Clone)]
+/// Configuration for prediction routines.
 pub struct PredConfig {
     pub max_set_size: Option<usize>,
     pub include_probs: bool,
@@ -14,6 +15,7 @@ pub struct PredConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+/// Input row for classification prediction from probabilities or logits.
 pub struct ClassPredRow {
     #[serde(default)]
     probs: Option<Vec<f64>>,
@@ -22,17 +24,21 @@ pub struct ClassPredRow {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+/// Input row for regression prediction from a point estimate `y_pred`.
 pub struct RegrPredRow { pub y_pred: f64 }
 
 #[cfg(feature = "onnx")]
 #[derive(Debug, Clone, Deserialize)]
+/// ONNX-backed input row for classification prediction (`x` features).
 pub struct ClassPredRowOnnx { pub x: Vec<f32> }
 
 #[cfg(feature = "onnx")]
 #[derive(Debug, Clone, Deserialize)]
+/// ONNX-backed input row for regression prediction (`x` features).
 pub struct RegrPredRowOnnx { pub x: Vec<f32> }
 
 #[derive(Debug, Clone, Serialize)]
+/// Output record for classification prediction sets.
 pub struct ClassPredOut {
     pub set_indices: Vec<usize>,
     pub set_labels: Option<Vec<String>>,
@@ -44,6 +50,7 @@ pub struct ClassPredOut {
 }
 
 #[derive(Debug, Clone, Serialize)]
+/// Output record for regression prediction intervals.
 pub struct RegrPredOut {
     pub y_pred: f64,
     pub lower: f64,
@@ -51,6 +58,7 @@ pub struct RegrPredOut {
     pub width: f64,
 }
 
+/// Produces conformal prediction sets for classification.
 pub fn predict_classification<R: BufRead, W: Write>(
     calib: &CalibModel,
     reader: R,
@@ -95,6 +103,7 @@ pub fn predict_classification<R: BufRead, W: Write>(
     Ok(())
 }
 
+/// Produces conformal prediction intervals for regression.
 pub fn predict_regression<R: BufRead, W: Write>(
     calib: &CalibModel,
     reader: R,
@@ -122,8 +131,8 @@ pub fn predict_regression<R: BufRead, W: Write>(
     Ok(())
 }
 
-// ===== ONNX-backed prediction (optional) =====
 #[cfg(feature = "onnx")]
+/// ONNX-backed variant of classification prediction.
 fn predict_classification_onnx<R: BufRead, W: Write>(
     calib: &CalibModel,
     reader: R,
@@ -159,6 +168,7 @@ fn predict_classification_onnx<R: BufRead, W: Write>(
 }
 
 #[cfg(feature = "onnx")]
+/// ONNX-backed variant of regression prediction.
 fn predict_regression_onnx<R: BufRead, W: Write>(
     calib: &CalibModel,
     reader: R,

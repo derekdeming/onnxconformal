@@ -23,7 +23,7 @@ fn test_calibrate_classification() {
         writeln!(f, "{}", serde_json::json!({"probs": [0.7, 0.3], "label_index": 0}).to_string()).unwrap();
     }
 
-    let cfg = CalibConfig { alpha: 0.1, mondrian: false, max_rows: None };
+    let cfg = CalibConfig { alpha: 0.1, mondrian: false, max_rows: None, #[cfg(feature = "onnx")] onnx: None };
     let model = CalibModel::fit_from_file(path.to_str().unwrap(), CalibFileKind::Classification, cfg).unwrap();
     assert_eq!(model.task, "class");
     assert_eq!(model.alpha, 0.1);
@@ -54,7 +54,7 @@ fn test_calibrate_regression() {
         writeln!(f, "{}", serde_json::json!({"y_true": -1.0, "y_pred": -0.7}).to_string()).unwrap();
     }
 
-    let cfg = CalibConfig { alpha: 0.2, mondrian: false, max_rows: None };
+    let cfg = CalibConfig { alpha: 0.2, mondrian: false, max_rows: None, #[cfg(feature = "onnx")] onnx: None };
     let model = CalibModel::fit_from_file(path.to_str().unwrap(), CalibFileKind::Regression, cfg).unwrap();
     assert_eq!(model.task, "regr");
     assert_eq!(model.alpha, 0.2);

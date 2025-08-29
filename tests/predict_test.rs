@@ -26,7 +26,7 @@ fn test_predict_classification_stream() {
     let mut out_buf: Vec<u8> = Vec::new();
     {
         let writer = BufWriter::new(&mut out_buf);
-        let cfg = PredConfig { max_set_size: None, include_probs: false, max_rows: None };
+        let cfg = PredConfig { max_set_size: None, include_probs: false, max_rows: None, #[cfg(feature = "onnx")] onnx: None };
         predict_classification(&calib, reader, writer, cfg).unwrap();
     }
     let out_str = String::from_utf8(out_buf).unwrap();
@@ -63,7 +63,7 @@ fn test_predict_regression_stream() {
     let mut out_buf: Vec<u8> = Vec::new();
     {
         let writer = BufWriter::new(&mut out_buf);
-        let cfg = PredConfig { max_set_size: None, include_probs: false, max_rows: None };
+        let cfg = PredConfig { max_set_size: None, include_probs: false, max_rows: None, #[cfg(feature = "onnx")] onnx: None };
         predict_regression(&calib, reader, writer, cfg).unwrap();
     }
     let out_str = String::from_utf8(out_buf).unwrap();
