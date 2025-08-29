@@ -159,17 +159,7 @@ fn main() -> Result<()> {
             let cfg = {
                 let onnx = onnx_model.as_ref().map(|m| onnxconformal_rs::onnx::OnnxOptions { model: m.clone(), input_name: onnx_input.clone(), output_name: onnx_output.clone(), input_names: onnx_inputs.clone(), output_names: onnx_outputs.clone() });
                 #[cfg(feature = "text")]
-                let text = {
-                    #[allow(unused_mut)]
-                    let mut t = None;
-                    #[cfg(all(feature = "text"))]
-                    {
-                        if let Some(tok) = tokenizer.as_ref() {
-                            t = Some(onnxconformal_rs::text::TextOptions { tokenizer: tok.clone(), max_len, truncation, padding });
-                        }
-                    }
-                    t
-                };
+                let text = tokenizer.as_ref().map(|tok| onnxconformal_rs::text::TextOptions { tokenizer: tok.clone(), max_len, truncation, padding });
                 CalibConfig { alpha, mondrian, max_rows, onnx, #[cfg(feature = "text")] text }
             };
             #[cfg(not(feature = "onnx"))]
@@ -196,17 +186,7 @@ fn main() -> Result<()> {
             let pred_cfg = {
                 let onnx = onnx_model.as_ref().map(|m| onnxconformal_rs::onnx::OnnxOptions { model: m.clone(), input_name: onnx_input.clone(), output_name: onnx_output.clone(), input_names: onnx_inputs.clone(), output_names: onnx_outputs.clone() });
                 #[cfg(feature = "text")]
-        		let text = {
-        		    #[allow(unused_mut)]
-        		    let mut t = None;
-        		    #[cfg(all(feature = "text"))]
-        		    {
-        		        if let Some(tok) = tokenizer.as_ref() {
-        		            t = Some(onnxconformal_rs::text::TextOptions { tokenizer: tok.clone(), max_len, truncation, padding });
-        		        }
-        		    }
-        		    t
-        		};
+                let text = tokenizer.as_ref().map(|tok| onnxconformal_rs::text::TextOptions { tokenizer: tok.clone(), max_len, truncation, padding });
                 PredConfig { max_set_size, include_probs, max_rows, onnx, #[cfg(feature = "text")] text }
             };
             #[cfg(not(feature = "onnx"))]

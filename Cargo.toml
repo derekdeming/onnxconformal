@@ -7,19 +7,15 @@ description = "Conformal prediction sets/intervals for classification & regressi
 
 [dependencies]
 anyhow = "1"
-thiserror = "1"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rayon = "1"
-itertools = "0.13"
 ordered-float = "4"
-ndarray = { version = "0.16", optional = true }
-ort = { version = "2.0.0-rc.10", features = ["ndarray"], optional = true }
+ort = { version = "2.0.0-rc.10", optional = true }
 tokenizers = { version = "0.15", optional = true }
 
 [features]
 # Placeholder for future ONNX inference (ort crate). Off by default.
-onnx = ["dep:ort", "dep:ndarray"]
+onnx = ["dep:ort"]
 # Optional text tokenization (Hugging Face tokenizers)
 text = ["dep:tokenizers"]

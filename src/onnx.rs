@@ -1,8 +1,9 @@
 //! Minimal ONNX Runtime runner used by the CLI.
 //!
-//! Provides a small, single‑input/single‑output abstraction over the `ort`
-//! crate, so most of the codebase avoids direct ORT APIs. Input/output tensor
-//! element types are detected and handled (e.g., `f32`, `bool`).
+//! Provides a small abstraction over the `ort` crate, supporting:
+//! - Single or multi-input feeds (1–3) for text-style integer inputs
+//! - Named output selection (primary or alternates)
+//! - Common tensor dtypes: f32, bool, i64, i32
 
 use anyhow::{bail, Context, Result};
 use ort::session::{Session, SessionOutputs};
@@ -17,7 +18,6 @@ pub struct OnnxRunner {
     output_name: String,
     in_dtype: TensorElementType,
     out_dtype: TensorElementType,
-    input_names: Vec<String>,
     output_names: Vec<String>,
 }
 
@@ -66,16 +66,18 @@ impl OnnxRunner {
 
         let input_name = opts.input_name.clone().unwrap_or(default_in.clone());
         let output_name = opts.output_name.clone().unwrap_or(default_out.clone());
-        let input_names = opts.input_names.clone().unwrap_or_else(|| vec![default_in]);
         let output_names = opts.output_names.clone().unwrap_or_else(|| vec![default_out]);
-
-        Ok(Self { session, input_name, output_name, in_dtype, out_dtype, input_names, output_names })
+        Ok(Self { session, input_name, output_name, in_dtype, out_dtype, output_names })
     }
 
     /// Runs inference for a single 1‑D feature vector (batch size 1) of f32.
     /// Returns a flattened `Vec<f32>`; boolean/int outputs are converted.
     pub fn infer_vec_f32(&mut self, x: &[f32]) -> Result<Vec<f32>> {
-        let inputs_val = match self.in_dtype {
+        // Use dtype of selected input name; error if unsupported.
+        let in_dtype = self
+            .dtype_for_input(self.input_name.as_str())
+            .unwrap_or(self.in_dtype);
+        let inputs_val = match in_dtype {
             TensorElementType::Float32 => {
                 let tensor = ort::value::Tensor::<f32>::from_array(([1usize, x.len()], x.to_vec().into_boxed_slice()))?;
                 ort::inputs![ self.input_name.as_str() => tensor ]
@@ -87,44 +89,19 @@ impl OnnxRunner {
             }
             other => anyhow::bail!("unsupported input dtype for f32 input: {:?}", other),
         };
-
-        let outputs = self.session
-            .run(inputs_val)
-            .context("onnx run failed")?;
-
-        let value = outputs
-            .get(self.output_name.as_str())
-            .ok_or_else(|| anyhow::anyhow!("output '{}' missing from model run", self.output_name))?;
-        let vec_f32: Vec<f32> = match self.out_dtype {
-            TensorElementType::Float32 => {
-                let tref: ort::value::TensorRef<f32> = value.downcast_ref().context("output not f32 tensor")?;
-                let (_, data) = tref.extract_tensor();
-                data.to_vec()
-            }
-            TensorElementType::Bool => {
-                let tref: ort::value::TensorRef<bool> = value.downcast_ref().context("output not bool tensor")?;
-                let (_, data) = tref.extract_tensor();
-                data.iter().map(|&b| if b { 1.0 } else { 0.0 }).collect()
-            }
-            TensorElementType::Int64 => {
-                let tref: ort::value::TensorRef<i64> = value.downcast_ref().context("output not i64 tensor")?;
-                let (_, data) = tref.extract_tensor();
-                data.iter().map(|&v| v as f32).collect()
-            }
-            TensorElementType::Int32 => {
-                let tref: ort::value::TensorRef<i32> = value.downcast_ref().context("output not i32 tensor")?;
-                let (_, data) = tref.extract_tensor();
-                data.iter().map(|&v| v as f32).collect()
-            }
-            other => anyhow::bail!("unsupported output dtype: {:?}", other),
-        };
-        Ok(vec_f32)
+        // Choose output name and dtype; if user requested a name, it must exist.
+        let (out_name, out_dtype) = self.select_output_name_and_dtype()?;
+        let outputs = self.session.run(inputs_val).context("onnx run failed")?;
+        Self::extract_output_by_name(outputs, out_dtype, out_name.as_str())
     }
 
     /// Runs inference for a single 1‑D feature vector (batch size 1) of i64 IDs.
     /// Returns a flattened `Vec<f32>`; boolean/int outputs are converted.
     pub fn infer_vec_i64(&mut self, x: &[i64]) -> Result<Vec<f32>> {
-        let inputs_val = match self.in_dtype {
+        let in_dtype = self
+            .dtype_for_input(self.input_name.as_str())
+            .unwrap_or(self.in_dtype);
+        let inputs_val = match in_dtype {
             TensorElementType::Int64 => {
                 let tensor = ort::value::Tensor::<i64>::from_array(([1usize, x.len()], x.to_vec().into_boxed_slice()))?;
                 ort::inputs![ self.input_name.as_str() => tensor ]
@@ -136,38 +113,28 @@ impl OnnxRunner {
             }
             other => anyhow::bail!("unsupported input dtype for i64 input: {:?}", other),
         };
+        let (out_name, out_dtype) = self.select_output_name_and_dtype()?;
+        let outputs = self.session.run(inputs_val).context("onnx run failed")?;
+        Self::extract_output_by_name(outputs, out_dtype, out_name.as_str())
+    }
 
-        let outputs = self.session
-            .run(inputs_val)
-            .context("onnx run failed")?;
-
-        let value = outputs
-            .get(self.output_name.as_str())
-            .ok_or_else(|| anyhow::anyhow!("output '{}' missing from model run", self.output_name))?;
-        let vec_f32: Vec<f32> = match self.out_dtype {
-            TensorElementType::Float32 => {
-                let tref: ort::value::TensorRef<f32> = value.downcast_ref().context("output not f32 tensor")?;
-                let (_, data) = tref.extract_tensor();
-                data.to_vec()
+    fn select_output_name_and_dtype(&self) -> Result<(String, TensorElementType)> {
+        // If explicit names are provided, they must resolve; otherwise default to first.
+        if !self.output_name.is_empty() || !self.output_names.is_empty() {
+            let mut names: Vec<&str> = Vec::new();
+            if !self.output_name.is_empty() { names.push(self.output_name.as_str()); }
+            for n in &self.output_names { names.push(n.as_str()); }
+            for cand in names {
+                if let Some(info) = self.session.outputs.iter().find(|o| o.name == cand) {
+                    let ty = match &info.output_type { ValueType::Tensor { ty, .. } => *ty, _ => self.out_dtype };
+                    return Ok((cand.to_string(), ty));
+                }
             }
-            TensorElementType::Bool => {
-                let tref: ort::value::TensorRef<bool> = value.downcast_ref().context("output not bool tensor")?;
-                let (_, data) = tref.extract_tensor();
-                data.iter().map(|&b| if b { 1.0 } else { 0.0 }).collect()
-            }
-            TensorElementType::Int64 => {
-                let tref: ort::value::TensorRef<i64> = value.downcast_ref().context("output not i64 tensor")?;
-                let (_, data) = tref.extract_tensor();
-                data.iter().map(|&v| v as f32).collect()
-            }
-            TensorElementType::Int32 => {
-                let tref: ort::value::TensorRef<i32> = value.downcast_ref().context("output not i32 tensor")?;
-                let (_, data) = tref.extract_tensor();
-                data.iter().map(|&v| v as f32).collect()
-            }
-            other => anyhow::bail!("unsupported output dtype: {:?}", other),
-        };
-        Ok(vec_f32)
+            anyhow::bail!("requested output not found; use --onnx-output/--onnx-outputs with a valid name");
+        }
+        let info = self.session.outputs.get(0).ok_or_else(|| anyhow::anyhow!("model has no outputs"))?;
+        let ty = match &info.output_type { ValueType::Tensor { ty, .. } => *ty, _ => self.out_dtype };
+        Ok((info.name.clone(), ty))
     }
 
     /// Multi-input (1–3) variant for integer (text-like) inputs. Each item is
@@ -191,8 +158,9 @@ impl OnnxRunner {
                     }
                     other => anyhow::bail!("unsupported input dtype for {}: {:?}", n1, other),
                 };
+                let (out_name, out_dtype) = self.select_output_name_and_dtype()?;
                 let outputs = self.session.run(inputs_val).context("onnx run failed")?;
-                Self::extract_primary_output_from(outputs, self.out_dtype, self.output_name.as_str(), &self.output_names)
+                Self::extract_output_by_name(outputs, out_dtype, out_name.as_str())
             }
             2 => {
                 let (n1, x1) = items[0];
@@ -226,8 +194,9 @@ impl OnnxRunner {
                     }
                     other => anyhow::bail!("unsupported input dtype combination: {:?}", other),
                 };
+                let (out_name, out_dtype) = self.select_output_name_and_dtype()?;
                 let outputs = self.session.run(inputs_val).context("onnx run failed")?;
-                Self::extract_primary_output_from(outputs, self.out_dtype, self.output_name.as_str(), &self.output_names)
+                Self::extract_output_by_name(outputs, out_dtype, out_name.as_str())
             }
             3 => {
                 let (n1, x1) = items[0];
@@ -254,8 +223,9 @@ impl OnnxRunner {
                     (T::Int32, T::Int32, T::Int32) => ort::inputs![ n1 => t1_i32, n2 => t2_i32, n3 => t3_i32 ],
                     other => anyhow::bail!("unsupported input dtype combination: {:?}", other),
                 };
+                let (out_name, out_dtype) = self.select_output_name_and_dtype()?;
                 let outputs = self.session.run(inputs_val).context("onnx run failed")?;
-                Self::extract_primary_output_from(outputs, self.out_dtype, self.output_name.as_str(), &self.output_names)
+                Self::extract_output_by_name(outputs, out_dtype, out_name.as_str())
             }
             _ => anyhow::bail!("infer_i64_named supports up to 3 inputs"),
         }
@@ -265,14 +235,10 @@ impl OnnxRunner {
         self.session.inputs.iter().find(|i| i.name == name).and_then(|i| match &i.input_type { ValueType::Tensor { ty, .. } => Some(*ty), _ => None })
     }
 
-    fn extract_primary_output_from(outputs: SessionOutputs, out_dtype: TensorElementType, output_name: &str, output_names: &[String]) -> Result<Vec<f32>> {
-        let mut value = outputs.get(output_name);
-        if value.is_none() {
-            for n in output_names {
-                if let Some(v) = outputs.get(n.as_str()) { value = Some(v); break; }
-            }
-        }
-        let value = value.ok_or_else(|| anyhow::anyhow!("output '{}' missing from model run", output_name))?;
+    fn extract_output_by_name(outputs: SessionOutputs, out_dtype: TensorElementType, output_name: &str) -> Result<Vec<f32>> {
+        let value = outputs
+            .get(output_name)
+            .ok_or_else(|| anyhow::anyhow!("output '{}' missing from model run", output_name))?;
         let vec_f32: Vec<f32> = match out_dtype {
             TensorElementType::Float32 => {
                 let tref: ort::value::TensorRef<f32> = value.downcast_ref().context("output not f32 tensor")?;

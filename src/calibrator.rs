@@ -1,5 +1,5 @@
 use crate::nonconformity::{class_score, regr_score};
-use crate::utils::{conformal_quantile, ensure_prob_vector, jsonl_deser, label_to_index, safe_sort, softmax};
+use crate::utils::{conformal_quantile, ensure_prob_vector, jsonl_deser, safe_sort, softmax};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -142,21 +142,7 @@ fn fit_class_from_jsonl(path: &str, cfg: CalibConfig) -> Result<CalibModel> {
         let k = p.len();
         if k == 0 { continue; }
 
-        let idx = if let Some(i) = r.label_index {
-            if i >= k { anyhow::bail!("label_index {} out of range {}", i, k); }
-            i
-        } else if let Some(lbl) = &r.label {
-            if let Some(canon) = &canon_labels {
-                label_to_index(lbl, canon)?
-            } else {
-                match lbl {
-                    serde_json::Value::Number(n) => n.as_u64().ok_or_else(|| anyhow::anyhow!("label number invalid"))? as usize,
-                    _ => anyhow::bail!("string label provided without 'labels' list"),
-                }
-            }
-        } else {
-            anyhow::bail!("row missing label/label_index");
-        };
+        let idx = crate::utils::resolve_label_index(r.label_index, r.label.as_ref(), k, canon_labels.as_deref())?;
 
         let s = class_score(p[idx]);
         scores.push(s);
@@ -260,21 +246,7 @@ fn fit_class_from_jsonl_onnx(path: &str, cfg: CalibConfig, onnx: crate::onnx::On
         let logits_f64: Vec<f64> = out.iter().map(|&v| v as f64).collect();
         let probs = ensure_prob_vector(softmax(&logits_f64));
         let k = probs.len();
-        let idx = if let Some(i) = r.label_index {
-            if i >= k { anyhow::bail!("label_index {} out of range {}", i, k); }
-            i
-        } else if let Some(lbl) = &r.label {
-            if let Some(canon) = &canon_labels {
-                label_to_index(lbl, canon)?
-            } else {
-                match lbl {
-                    serde_json::Value::Number(n) => n.as_u64().ok_or_else(|| anyhow::anyhow!("label number invalid"))? as usize,
-                    _ => anyhow::bail!("string label provided without 'labels' list"),
-                }
-            }
-        } else {
-            anyhow::bail!("row missing label/label_index");
-        };
+        let idx = crate::utils::resolve_label_index(r.label_index, r.label.as_ref(), k, canon_labels.as_deref())?;
         let s = class_score(probs[idx]);
         scores.push(s);
         if cfg.mondrian {
@@ -340,26 +312,22 @@ fn fit_class_from_jsonl_onnx_text(path: &str, cfg: CalibConfig, onnx: crate::onn
     for r in rows.iter() {
         let (ids, mask, type_ids) = tok.encode_with_aux_i64(&r.text)?;
         let out = if let Some(names) = &onnx.input_names {
-            match names.len() {
-                2 => runner.infer_i64_named(&[(names[0].as_str(), &ids), (names[1].as_str(), &mask)])?,
-                3 => runner.infer_i64_named(&[(names[0].as_str(), &ids), (names[1].as_str(), &mask), (names[2].as_str(), &type_ids)])?,
-                _ => runner.infer_vec_i64(&ids)?,
+            match names.as_slice() {
+                [id] => runner.infer_i64_named(&[(id.as_str(), &ids)])?,
+                [id, maskn] => runner.infer_i64_named(&[(id.as_str(), &ids), (maskn.as_str(), &mask)])?,
+                [id, maskn, typen] => runner.infer_i64_named(&[(id.as_str(), &ids), (maskn.as_str(), &mask), (typen.as_str(), &type_ids)])?,
+                _ => anyhow::bail!("expected 1-3 --onnx-inputs for text models (input_ids[,attention_mask[,token_type_ids]])"),
             }
+        } else if let Some(single) = onnx.input_name.as_ref() {
+            runner.infer_i64_named(&[(single.as_str(), &ids)])?
         } else {
-            runner.infer_vec_i64(&ids)?
+            anyhow::bail!("text mode requires --onnx-input or --onnx-inputs");
         };
         if out.is_empty() { anyhow::bail!("onnx model produced empty output"); }
         let logits_f64: Vec<f64> = out.iter().map(|&v| v as f64).collect();
         let probs = ensure_prob_vector(softmax(&logits_f64));
         let k = probs.len();
-        let idx = if let Some(i) = r.label_index {
-            if i >= k { anyhow::bail!("label_index {} out of range {}", i, k); }
-            i
-        } else if let Some(lbl) = &r.label {
-            if let Some(canon) = &canon_labels { label_to_index(lbl, canon)? } else {
-                match lbl { serde_json::Value::Number(n) => n.as_u64().ok_or_else(|| anyhow::anyhow!("label number invalid"))? as usize, _ => anyhow::bail!("string label provided without 'labels' list"), }
-            }
-        } else { anyhow::bail!("row missing label/label_index"); };
+        let idx = crate::utils::resolve_label_index(r.label_index, r.label.as_ref(), k, canon_labels.as_deref())?;
         let s = crate::nonconformity::class_score(probs[idx]);
         scores.push(s);
         if cfg.mondrian { per_label.entry(idx).or_default().push(s); }
@@ -438,13 +406,16 @@ fn fit_regr_from_jsonl_onnx_text(path: &str, cfg: CalibConfig, onnx: crate::onnx
     for r in rows.into_iter() {
         let (ids, mask, type_ids) = tok.encode_with_aux_i64(&r.text)?;
         let out = if let Some(names) = &onnx.input_names {
-            match names.len() {
-                2 => runner.infer_i64_named(&[(names[0].as_str(), &ids), (names[1].as_str(), &mask)])?,
-                3 => runner.infer_i64_named(&[(names[0].as_str(), &ids), (names[1].as_str(), &mask), (names[2].as_str(), &type_ids)])?,
-                _ => runner.infer_vec_i64(&ids)?,
+            match names.as_slice() {
+                [id] => runner.infer_i64_named(&[(id.as_str(), &ids)])?,
+                [id, maskn] => runner.infer_i64_named(&[(id.as_str(), &ids), (maskn.as_str(), &mask)])?,
+                [id, maskn, typen] => runner.infer_i64_named(&[(id.as_str(), &ids), (maskn.as_str(), &mask), (typen.as_str(), &type_ids)])?,
+                _ => anyhow::bail!("expected 1-3 --onnx-inputs for text models"),
             }
+        } else if let Some(single) = onnx.input_name.as_ref() {
+            runner.infer_i64_named(&[(single.as_str(), &ids)])?
         } else {
-            runner.infer_vec_i64(&ids)?
+            anyhow::bail!("text mode requires --onnx-input or --onnx-inputs");
         };
         if out.is_empty() { anyhow::bail!("onnx model produced empty output"); }
         let y_pred = out[0] as f64;

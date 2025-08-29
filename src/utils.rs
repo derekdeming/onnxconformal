@@ -74,3 +74,26 @@ pub fn label_to_index(label: &serde_json::Value, labels: &[String]) -> Result<us
         _ => bail!("label must be number or string"),
     }
 }
+
+/// Resolves a label index from either an explicit `label_index` or a `label` value.
+/// If `canon_labels` is provided, string labels are mapped; otherwise numeric labels are required.
+pub fn resolve_label_index(
+    label_index: Option<usize>,
+    label: Option<&serde_json::Value>,
+    k: usize,
+    canon_labels: Option<&[String]>,
+) -> Result<usize> {
+    if let Some(i) = label_index {
+        if i >= k { bail!("label_index {} out of range {}", i, k); }
+        return Ok(i);
+    }
+    if let Some(lbl) = label {
+        if let Some(canon) = canon_labels { return label_to_index(lbl, canon); }
+        match lbl {
+            serde_json::Value::Number(n) => Ok(n.as_u64().ok_or_else(|| anyhow::anyhow!("label number invalid"))? as usize),
+            _ => bail!("string label provided without 'labels' list"),
+        }
+    } else {
+        bail!("row missing label/label_index");
+    }
+}

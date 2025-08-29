@@ -70,6 +70,43 @@ pub struct RegrPredOut {
     pub width: f64,
 }
 
+fn build_class_output(
+    probs: &[f64],
+    label_names: Option<&Vec<String>>,
+    q: f64,
+    max_set_size: Option<usize>,
+    include_probs: bool,
+) -> ClassPredOut {
+    let mut set: Vec<usize> = probs
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &p)| if (1.0 - p) <= q { Some(i) } else { None })
+        .collect();
+    if let Some(cap) = max_set_size {
+        if set.len() > cap {
+            set.sort_unstable_by(|&a, &b| probs[b].partial_cmp(&probs[a]).unwrap());
+            set.truncate(cap);
+            set.sort_unstable();
+        }
+    }
+    let max_idx = argmax(probs);
+    let set_labels = label_names.map(|names| {
+        set.iter()
+            .map(|&i| names.get(i).cloned().unwrap_or_else(|| format!("{}", i)))
+            .collect::<Vec<_>>()
+    });
+    let max_label = match (label_names, max_idx) {
+        (Some(names), Some(i)) => Some(names[i].clone()),
+        _ => None,
+    };
+    let set_probs = if include_probs {
+        Some(set.iter().map(|&i| probs[i]).collect())
+    } else {
+        None
+    };
+    ClassPredOut { set_indices: set.clone(), set_labels, set_size: set.len(), max_prob_label: max_label, max_prob_index: max_idx, set_probs }
+}
+
 /// Produces conformal prediction sets for classification.
 pub fn predict_classification<R: BufRead, W: Write>(
     calib: &CalibModel,
@@ -101,19 +138,7 @@ pub fn predict_classification<R: BufRead, W: Write>(
             _ => anyhow::bail!("row missing probs/logits"),
         };
         if probs.is_empty() { continue; }
-        let mut set: Vec<usize> = probs.iter().enumerate().filter_map(|(i, &p)| if (1.0 - p) <= q { Some(i) } else { None }).collect();
-        if let Some(cap) = cfg.max_set_size {
-            if set.len() > cap {
-                set.sort_unstable_by(|&a, &b| probs[b].partial_cmp(&probs[a]).unwrap());
-                set.truncate(cap);
-                set.sort_unstable();
-            }
-        }
-        let max_idx = argmax(&probs);
-        let set_labels = label_names.as_ref().map(|names| set.iter().map(|&i| names.get(i).cloned().unwrap_or_else(|| format!("{}", i))).collect::<Vec<_>>());
-        let max_label = match (&label_names, max_idx) { (Some(names), Some(i)) => Some(names[i].clone()), _ => None };
-        let set_probs = if cfg.include_probs { Some(set.iter().map(|&i| probs[i]).collect()) } else { None };
-        let out = ClassPredOut { set_indices: set.clone(), set_labels, set_size: set.len(), max_prob_label: max_label, max_prob_index: max_idx, set_probs };
+        let out = build_class_output(&probs, label_names.as_ref(), q, cfg.max_set_size, cfg.include_probs);
         jsonl_ser(&mut writer, &out)?;
     }
     Ok(())
@@ -175,13 +200,7 @@ fn predict_classification_onnx<R: BufRead, W: Write>(
         let logits_f64: Vec<f64> = out.iter().map(|&v| v as f64).collect();
         let probs = ensure_prob_vector(softmax(&logits_f64));
         if probs.is_empty() { continue; }
-        let mut set: Vec<usize> = probs.iter().enumerate().filter_map(|(i, &p)| if (1.0 - p) <= q { Some(i) } else { None }).collect();
-        if let Some(cap) = cfg.max_set_size { if set.len() > cap { set.sort_unstable_by(|&a, &b| probs[b].partial_cmp(&probs[a]).unwrap()); set.truncate(cap); set.sort_unstable(); } }
-        let max_idx = argmax(&probs);
-        let set_labels = label_names.as_ref().map(|names| set.iter().map(|&i| names.get(i).cloned().unwrap_or_else(|| format!("{}", i))).collect::<Vec<_>>());
-        let max_label = match (&label_names, max_idx) { (Some(names), Some(i)) => Some(names[i].clone()), _ => None };
-        let set_probs = if cfg.include_probs { Some(set.iter().map(|&i| probs[i]).collect()) } else { None };
-        let out = ClassPredOut { set_indices: set.clone(), set_labels, set_size: set.len(), max_prob_label: max_label, max_prob_index: max_idx, set_probs };
+        let out = build_class_output(&probs, label_names.as_ref(), q, cfg.max_set_size, cfg.include_probs);
         jsonl_ser(&mut writer, &out)?;
     }
     Ok(())
@@ -212,24 +231,21 @@ fn predict_classification_onnx_text<R: BufRead, W: Write>(
         let r: ClassPredRowOnnxText = serde_json::from_str(&l)?;
         let (ids, mask, type_ids) = tok.encode_with_aux_i64(&r.text)?;
         let out = if let Some(names) = &onnx.input_names {
-            match names.len() {
-                2 => runner.infer_i64_named(&[(names[0].as_str(), &ids), (names[1].as_str(), &mask)])?,
-                3 => runner.infer_i64_named(&[(names[0].as_str(), &ids), (names[1].as_str(), &mask), (names[2].as_str(), &type_ids)])?,
-                _ => runner.infer_vec_i64(&ids)?,
+            match names.as_slice() {
+                [id] => runner.infer_i64_named(&[(id.as_str(), &ids)])?,
+                [id, maskn] => runner.infer_i64_named(&[(id.as_str(), &ids), (maskn.as_str(), &mask)])?,
+                [id, maskn, typen] => runner.infer_i64_named(&[(id.as_str(), &ids), (maskn.as_str(), &mask), (typen.as_str(), &type_ids)])?,
+                _ => anyhow::bail!("expected 1-3 --onnx-inputs for text models (input_ids[,attention_mask[,token_type_ids]])"),
             }
+        } else if let Some(single) = onnx.input_name.as_ref() {
+            runner.infer_i64_named(&[(single.as_str(), &ids)])?
         } else {
-            runner.infer_vec_i64(&ids)?
+            anyhow::bail!("text mode requires --onnx-input or --onnx-inputs");
         };
         let logits_f64: Vec<f64> = out.iter().map(|&v| v as f64).collect();
         let probs = ensure_prob_vector(softmax(&logits_f64));
         if probs.is_empty() { continue; }
-        let mut set: Vec<usize> = probs.iter().enumerate().filter_map(|(i, &p)| if (1.0 - p) <= q { Some(i) } else { None }).collect();
-        if let Some(cap) = cfg.max_set_size { if set.len() > cap { set.sort_unstable_by(|&a, &b| probs[b].partial_cmp(&probs[a]).unwrap()); set.truncate(cap); set.sort_unstable(); } }
-        let max_idx = argmax(&probs);
-        let set_labels = label_names.as_ref().map(|names| set.iter().map(|&i| names.get(i).cloned().unwrap_or_else(|| format!("{}", i))).collect::<Vec<_>>());
-        let max_label = match (&label_names, max_idx) { (Some(names), Some(i)) => Some(names[i].clone()), _ => None };
-        let set_probs = if cfg.include_probs { Some(set.iter().map(|&i| probs[i]).collect()) } else { None };
-        let out = ClassPredOut { set_indices: set.clone(), set_labels, set_size: set.len(), max_prob_label: max_label, max_prob_index: max_idx, set_probs };
+        let out = build_class_output(&probs, label_names.as_ref(), q, cfg.max_set_size, cfg.include_probs);
         jsonl_ser(&mut writer, &out)?;
     }
     Ok(())
@@ -289,13 +305,16 @@ fn predict_regression_onnx_text<R: BufRead, W: Write>(
         let r: RegrPredRowOnnxText = serde_json::from_str(&l)?;
         let (ids, mask, type_ids) = tok.encode_with_aux_i64(&r.text)?;
         let out = if let Some(names) = &onnx.input_names {
-            match names.len() {
-                2 => runner.infer_i64_named(&[(names[0].as_str(), &ids), (names[1].as_str(), &mask)])?,
-                3 => runner.infer_i64_named(&[(names[0].as_str(), &ids), (names[1].as_str(), &mask), (names[2].as_str(), &type_ids)])?,
-                _ => runner.infer_vec_i64(&ids)?,
+            match names.as_slice() {
+                [id] => runner.infer_i64_named(&[(id.as_str(), &ids)])?,
+                [id, maskn] => runner.infer_i64_named(&[(id.as_str(), &ids), (maskn.as_str(), &mask)])?,
+                [id, maskn, typen] => runner.infer_i64_named(&[(id.as_str(), &ids), (maskn.as_str(), &mask), (typen.as_str(), &type_ids)])?,
+                _ => anyhow::bail!("expected 1-3 --onnx-inputs for text models"),
             }
+        } else if let Some(single) = onnx.input_name.as_ref() {
+            runner.infer_i64_named(&[(single.as_str(), &ids)])?
         } else {
-            runner.infer_vec_i64(&ids)?
+            anyhow::bail!("text mode requires --onnx-input or --onnx-inputs");
         };
         if out.is_empty() { continue; }
         let y_pred = out[0] as f64;
