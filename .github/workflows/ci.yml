@@ -8,53 +8,52 @@ on:
 
 jobs:
   test:
-    name: Build, Lint, Test (stable)
+    name: "Build, Lint, Test (stable)"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust (stable)
+      - name: "Install Rust (stable)"
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy, rustfmt
+          components: "clippy, rustfmt"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Format check
+      - name: "Format check"
         run: cargo fmt --all -- --check
 
-      - name: Clippy (deny warnings)
+      - name: "Clippy (deny warnings)"
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Build (all targets)
+      - name: "Build (all targets)"
         run: cargo build --workspace --all-targets --locked
 
-      - name: Test
+      - name: "Test"
         env:
           RUST_BACKTRACE: 1
         run: cargo test --workspace --locked
 
   check-onnx:
-    name: Check (features: onnx)
+    name: "Check (features: onnx)"
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Cargo check (onnx)
+      - name: "Cargo check (onnx)"
         run: cargo check --features onnx --locked
+        continue-on-error: true
 
   check-onnx-text:
-    name: Check (features: onnx,text)
+    name: "Check (features: onnx,text)"
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Cargo check (onnx,text)
+      - name: "Cargo check (onnx,text)"
         run: cargo check --features onnx,text --locked
-
+        continue-on-error: true
