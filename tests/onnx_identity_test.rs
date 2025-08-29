@@ -79,7 +79,7 @@ fn onnx_classification_identity_end_to_end() {
         alpha: 0.1,
         mondrian: false,
         max_rows: None,
-        onnx: Some(onnxconformal_rs::onnx::OnnxOptions { model: model_path.to_string_lossy().to_string(), input_name: None, output_name: None })
+        onnx: Some(onnxconformal_rs::onnx::OnnxOptions { model: model_path.to_string_lossy().to_string(), input_name: None, output_name: None, input_names: None, output_names: None })
     };
     let model = CalibModel::fit_from_file(calib_path.to_str().unwrap(), CalibFileKind::Classification, cfg).unwrap();
     assert_eq!(model.task, "class");
@@ -95,7 +95,7 @@ fn onnx_classification_identity_end_to_end() {
     let mut out_buf: Vec<u8> = Vec::new();
     {
         let writer = BufWriter::new(&mut out_buf);
-        let cfg = PredConfig { max_set_size: Some(1), include_probs: true, max_rows: None, onnx: Some(onnxconformal_rs::onnx::OnnxOptions { model: model_path.to_string_lossy().to_string(), input_name: None, output_name: None }) };
+        let cfg = PredConfig { max_set_size: Some(1), include_probs: true, max_rows: None, onnx: Some(onnxconformal_rs::onnx::OnnxOptions { model: model_path.to_string_lossy().to_string(), input_name: None, output_name: None, input_names: None, output_names: None }) };
         predict_classification(&model, reader, writer, cfg).unwrap();
     }
     let s = String::from_utf8(out_buf).unwrap();
@@ -120,7 +120,7 @@ fn onnx_regression_identity_end_to_end() {
         writeln!(f, "{}", serde_json::json!({"x":[-0.1], "y_true": 0.0}).to_string()).unwrap();
         writeln!(f, "{}", serde_json::json!({"x":[-0.7], "y_true": -1.0}).to_string()).unwrap();
     }
-    let cfg = CalibConfig { alpha: 0.2, mondrian: false, max_rows: None, onnx: Some(onnxconformal_rs::onnx::OnnxOptions { model: model_path.to_string_lossy().to_string(), input_name: None, output_name: None }) };
+    let cfg = CalibConfig { alpha: 0.2, mondrian: false, max_rows: None, onnx: Some(onnxconformal_rs::onnx::OnnxOptions { model: model_path.to_string_lossy().to_string(), input_name: None, output_name: None, input_names: None, output_names: None }) };
     let model = CalibModel::fit_from_file(calib_path.to_str().unwrap(), CalibFileKind::Regression, cfg).unwrap();
     assert_eq!(model.task, "regr");
     assert!(model.global_q.is_finite());
@@ -131,7 +131,7 @@ fn onnx_regression_identity_end_to_end() {
     let mut out_buf: Vec<u8> = Vec::new();
     {
         let writer = BufWriter::new(&mut out_buf);
-        let cfg = PredConfig { max_set_size: None, include_probs: false, max_rows: None, onnx: Some(onnxconformal_rs::onnx::OnnxOptions { model: model_path.to_string_lossy().to_string(), input_name: None, output_name: None }) };
+        let cfg = PredConfig { max_set_size: None, include_probs: false, max_rows: None, onnx: Some(onnxconformal_rs::onnx::OnnxOptions { model: model_path.to_string_lossy().to_string(), input_name: None, output_name: None, input_names: None, output_names: None }) };
         predict_regression(&model, reader, writer, cfg).unwrap();
     }
     let s = String::from_utf8(out_buf).unwrap();

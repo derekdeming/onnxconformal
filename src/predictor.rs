@@ -210,8 +210,16 @@ fn predict_classification_onnx_text<R: BufRead, W: Write>(
         if l.trim().is_empty() { continue; }
         count += 1;
         let r: ClassPredRowOnnxText = serde_json::from_str(&l)?;
-        let ids = tok.encode_ids_i64(&r.text)?;
-        let out = runner.infer_vec_i64(&ids)?;
+        let (ids, mask, type_ids) = tok.encode_with_aux_i64(&r.text)?;
+        let out = if let Some(names) = &onnx.input_names {
+            match names.len() {
+                2 => runner.infer_i64_named(&[(names[0].as_str(), &ids), (names[1].as_str(), &mask)])?,
+                3 => runner.infer_i64_named(&[(names[0].as_str(), &ids), (names[1].as_str(), &mask), (names[2].as_str(), &type_ids)])?,
+                _ => runner.infer_vec_i64(&ids)?,
+            }
+        } else {
+            runner.infer_vec_i64(&ids)?
+        };
         let logits_f64: Vec<f64> = out.iter().map(|&v| v as f64).collect();
         let probs = ensure_prob_vector(softmax(&logits_f64));
         if probs.is_empty() { continue; }
@@ -279,8 +287,16 @@ fn predict_regression_onnx_text<R: BufRead, W: Write>(
         if l.trim().is_empty() { continue; }
         count += 1;
         let r: RegrPredRowOnnxText = serde_json::from_str(&l)?;
-        let ids = tok.encode_ids_i64(&r.text)?;
-        let out = runner.infer_vec_i64(&ids)?;
+        let (ids, mask, type_ids) = tok.encode_with_aux_i64(&r.text)?;
+        let out = if let Some(names) = &onnx.input_names {
+            match names.len() {
+                2 => runner.infer_i64_named(&[(names[0].as_str(), &ids), (names[1].as_str(), &mask)])?,
+                3 => runner.infer_i64_named(&[(names[0].as_str(), &ids), (names[1].as_str(), &mask), (names[2].as_str(), &type_ids)])?,
+                _ => runner.infer_vec_i64(&ids)?,
+            }
+        } else {
+            runner.infer_vec_i64(&ids)?
+        };
         if out.is_empty() { continue; }
         let y_pred = out[0] as f64;
         let lower = y_pred - q;

@@ -49,10 +49,18 @@ enum Commands {
         #[cfg(feature = "onnx")]
         #[arg(long)]
         onnx_input: Option<String>,
+        /// Optional: multiple ONNX input names (comma-separated)
+        #[cfg(feature = "onnx")]
+        #[arg(long = "onnx-inputs", value_delimiter = ',')]
+        onnx_inputs: Option<Vec<String>>,
         /// Optional: ONNX output tensor name
         #[cfg(feature = "onnx")]
         #[arg(long)]
         onnx_output: Option<String>,
+        /// Optional: multiple ONNX output names (comma-separated)
+        #[cfg(feature = "onnx")]
+        #[arg(long = "onnx-outputs", value_delimiter = ',')]
+        onnx_outputs: Option<Vec<String>>,
         /// Optional: text tokenization (requires --features onnx,text)
         #[cfg(all(feature = "onnx", feature = "text"))]
         #[arg(long, value_name = "tokenizer.json")]
@@ -101,10 +109,18 @@ enum Commands {
         #[cfg(feature = "onnx")]
         #[arg(long)]
         onnx_input: Option<String>,
+        /// Optional: multiple ONNX input names (comma-separated)
+        #[cfg(feature = "onnx")]
+        #[arg(long = "onnx-inputs", value_delimiter = ',')]
+        onnx_inputs: Option<Vec<String>>,
         /// Optional: ONNX output tensor name
         #[cfg(feature = "onnx")]
         #[arg(long)]
         onnx_output: Option<String>,
+        /// Optional: multiple ONNX output names (comma-separated)
+        #[cfg(feature = "onnx")]
+        #[arg(long = "onnx-outputs", value_delimiter = ',')]
+        onnx_outputs: Option<Vec<String>>,
         /// Optional: text tokenization (requires --features onnx,text)
         #[cfg(all(feature = "onnx", feature = "text"))]
         #[arg(long, value_name = "tokenizer.json")]
@@ -127,16 +143,21 @@ enum Commands {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Calibrate { task, alpha, input, output, mondrian, max_rows, 
+        Commands::Calibrate { task, alpha, input, output, mondrian, max_rows,
             #[cfg(feature = "onnx")] onnx_model,
             #[cfg(feature = "onnx")] onnx_input,
+            #[cfg(feature = "onnx")] onnx_inputs,
             #[cfg(feature = "onnx")] onnx_output,
-        
+            #[cfg(feature = "onnx")] onnx_outputs,
+            #[cfg(all(feature = "onnx", feature = "text"))] tokenizer,
+            #[cfg(all(feature = "onnx", feature = "text"))] max_len,
+            #[cfg(all(feature = "onnx", feature = "text"))] truncation,
+            #[cfg(all(feature = "onnx", feature = "text"))] padding,
         } => {
             let task_kind = match task { Task::Class => CalibFileKind::Classification, Task::Regr => CalibFileKind::Regression };
             #[cfg(feature = "onnx")]
             let cfg = {
-                let onnx = onnx_model.as_ref().map(|m| onnxconformal_rs::onnx::OnnxOptions { model: m.clone(), input_name: onnx_input.clone(), output_name: onnx_output.clone() });
+                let onnx = onnx_model.as_ref().map(|m| onnxconformal_rs::onnx::OnnxOptions { model: m.clone(), input_name: onnx_input.clone(), output_name: onnx_output.clone(), input_names: onnx_inputs.clone(), output_names: onnx_outputs.clone() });
                 #[cfg(feature = "text")]
                 let text = {
                     #[allow(unused_mut)]
@@ -162,12 +183,18 @@ fn main() -> Result<()> {
         Commands::Predict { task, calib, input, output, max_set_size, include_probs, max_rows,
             #[cfg(feature = "onnx")] onnx_model,
             #[cfg(feature = "onnx")] onnx_input,
+            #[cfg(feature = "onnx")] onnx_inputs,
             #[cfg(feature = "onnx")] onnx_output,
+            #[cfg(feature = "onnx")] onnx_outputs,
+            #[cfg(all(feature = "onnx", feature = "text"))] tokenizer,
+            #[cfg(all(feature = "onnx", feature = "text"))] max_len,
+            #[cfg(all(feature = "onnx", feature = "text"))] truncation,
+            #[cfg(all(feature = "onnx", feature = "text"))] padding,
         } => {
             let calib = CalibModel::load(&calib).with_context(|| "failed to load calib json")?;
             #[cfg(feature = "onnx")]
             let pred_cfg = {
-                let onnx = onnx_model.as_ref().map(|m| onnxconformal_rs::onnx::OnnxOptions { model: m.clone(), input_name: onnx_input.clone(), output_name: onnx_output.clone() });
+                let onnx = onnx_model.as_ref().map(|m| onnxconformal_rs::onnx::OnnxOptions { model: m.clone(), input_name: onnx_input.clone(), output_name: onnx_output.clone(), input_names: onnx_inputs.clone(), output_names: onnx_outputs.clone() });
                 #[cfg(feature = "text")]
         		let text = {
         		    #[allow(unused_mut)]

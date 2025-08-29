@@ -39,7 +39,7 @@ ONNX/ORT support (optional)
 
 - Build with feature `onnx` to enable running ONNX models via the `ort` crate.
   - `cargo run --features onnx -- <subcommand> ...`
-  - Add `--onnx-model path.onnx` (and optionally `--onnx-input`, `--onnx-output`).
+  - Add `--onnx-model path.onnx` (and optionally `--onnx-input/--onnx-output` or multi-IO `--onnx-inputs a,b,c` `--onnx-outputs y,logits`).
 - When ONNX is used, JSONL inputs contain feature vectors `x`:
   - Classification calibration rows: `{ "x": [f32,...], "label_index": usize }` or `{ "x": [...], "label": "spam", "labels": ["ham","spam"] }`.
   - Regression calibration rows: `{ "x": [f32,...], "y_true": f64 }`.
@@ -50,6 +50,7 @@ Text tokenization (optional)
 
 - Build with features `onnx,text` to enable raw-text inputs via Hugging Face tokenizers.
   - Flags: `--tokenizer tokenizer.json [--max_len N --truncation --padding]`.
+  - Multi-input text models (e.g., BERT) supported via `--onnx-inputs input_ids,attention_mask[,token_type_ids]`.
   - JSONL rows use `text`: e.g., calibration `{ "text": "phishy message", "label":"phish", "labels":["ham","phish"] }`; prediction `{ "text": "..." }`.
   - Models expecting integer token IDs (int64/int32) are supported. Input/output dtypes now include `i64/i32` in addition to `f32/bool`.
 
