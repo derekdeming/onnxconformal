@@ -2,7 +2,7 @@ ONNXConformal:conformal prediction sets/intervals for model outputs
 
 - Fast, single-binary CLI in Rust.
 - Works without binding to ORT by default (reads JSONL of logits/probs or ŷ).
-- Optional onnx feature later to run ONNX models via the ort crate.
+- Optional `onnx` feature to run ONNX models via the `ort` crate.
 
 
 Initial thoughts, it should support:
@@ -12,3 +12,47 @@ Initial thoughts, it should support:
 - Smoothed quantile k = ⌈(n+1)(1−α)⌉ with safe clamps for small n.
 - JSONL I/O for speed and streaming friendliness.
 - Clear errors, edge cases (NaNs, missing fields, tiny calib sets).
+
+CLI Examples (non‑ONNX)
+
+- Build: `cargo build`
+
+- Classification
+  - Calibrate from probs/logits JSONL:
+    - `cargo run -- calibrate --task class --alpha 0.1 --input calib.jsonl --output calib.json`
+  - Predict sets from probs/logits JSONL:
+    - `cargo run -- predict --task class --calib calib.json --input scores.jsonl --output sets.jsonl --include_probs --max_set_size 5`
+  - JSONL rows:
+    - Calibration: `{ "probs": [0.85,0.15], "label":"ham", "labels":["ham","phish"] }` or `{ "logits": [...], "label_index": 1 }`
+    - Prediction: `{ "probs": [0.81,0.19] }` or `{ "logits": [-0.2,0.1] }`
+
+- Regression
+  - Calibrate from residuals (y_true/y_pred) JSONL:
+    - `cargo run -- calibrate --task regr --alpha 0.1 --input calib_regr.jsonl --output calib_regr.json`
+  - Predict intervals from y_pred JSONL:
+    - `cargo run -- predict --task regr --calib calib_regr.json --input preds.jsonl --output intervals.jsonl`
+  - JSONL rows:
+    - Calibration: `{ "y_true": 1.0, "y_pred": 1.2 }`
+    - Prediction: `{ "y_pred": -2.0 }`
+
+ONNX/ORT support (optional)
+
+- Build with feature `onnx` to enable running ONNX models via the `ort` crate.
+  - `cargo run --features onnx -- <subcommand> ...`
+  - Add `--onnx-model path.onnx` (and optionally `--onnx-input`, `--onnx-output`).
+- When ONNX is used, JSONL inputs contain feature vectors `x`:
+  - Classification calibration rows: `{ "x": [f32,...], "label_index": usize }` or `{ "x": [...], "label": "spam", "labels": ["ham","spam"] }`.
+  - Regression calibration rows: `{ "x": [f32,...], "y_true": f64 }`.
+  - Prediction rows: `{ "x": [f32,...] }`.
+- For classification, the ONNX model is expected to output a 1D vector of scores per class for batch size 1. These are treated as logits and passed through softmax.
+
+Examples
+
+- Calibrate classification from ONNX model outputs:
+  - `cargo run --features onnx -- calibrate --task class --alpha 0.1 --input calib_feats.jsonl --output calib.json --onnx-model model.onnx`
+- Predict classification sets by running the ONNX model:
+  - `cargo run --features onnx -- predict --task class --calib calib.json --input feats.jsonl --output sets.jsonl --onnx-model model.onnx`
+ - Calibrate regression from ONNX model outputs:
+   - `cargo run --features onnx -- calibrate --task regr --alpha 0.1 --input calib_feats_regr.jsonl --output calib_regr.json --onnx-model model.onnx`
+ - Predict regression intervals by running the ONNX model:
+   - `cargo run --features onnx -- predict --task regr --calib calib_regr.json --input feats.jsonl --output intervals.jsonl --onnx-model model.onnx`

@@ -1,0 +1,11 @@
+{
+  "task": "class",
+  "alpha": 0.1,
+  "global_q": 0.42555748318834097,
+  "per_label_q": null,
+  "labels": [
+    "ham",
+    "phish"
+  ],
+  "n": 3
+}
