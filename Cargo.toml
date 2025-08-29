@@ -16,7 +16,10 @@ itertools = "0.13"
 ordered-float = "4"
 ndarray = { version = "0.16", optional = true }
 ort = { version = "2.0.0-rc.10", features = ["ndarray"], optional = true }
+tokenizers = { version = "0.15", optional = true }
 
 [features]
 # Placeholder for future ONNX inference (ort crate). Off by default.
 onnx = ["dep:ort", "dep:ndarray"]
+# Optional text tokenization (Hugging Face tokenizers)
+text = ["dep:tokenizers"]

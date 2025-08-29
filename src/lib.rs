@@ -4,3 +4,5 @@ pub mod predictor;
 pub mod utils;
 #[cfg(feature = "onnx")]
 pub mod onnx;
+#[cfg(feature = "text")]
+pub mod text;

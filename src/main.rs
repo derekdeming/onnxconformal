@@ -53,6 +53,22 @@ enum Commands {
         #[cfg(feature = "onnx")]
         #[arg(long)]
         onnx_output: Option<String>,
+        /// Optional: text tokenization (requires --features onnx,text)
+        #[cfg(all(feature = "onnx", feature = "text"))]
+        #[arg(long, value_name = "tokenizer.json")]
+        tokenizer: Option<String>,
+        /// Max token length for truncation/padding
+        #[cfg(all(feature = "onnx", feature = "text"))]
+        #[arg(long)]
+        max_len: Option<usize>,
+        /// Enable truncation when sequence exceeds max_len
+        #[cfg(all(feature = "onnx", feature = "text"))]
+        #[arg(long, default_value_t = false)]
+        truncation: bool,
+        /// Enable padding up to max_len
+        #[cfg(all(feature = "onnx", feature = "text"))]
+        #[arg(long, default_value_t = false)]
+        padding: bool,
     },
     /// Apply prediction sets/intervals to new data (JSONL)
     Predict {
@@ -89,6 +105,22 @@ enum Commands {
         #[cfg(feature = "onnx")]
         #[arg(long)]
         onnx_output: Option<String>,
+        /// Optional: text tokenization (requires --features onnx,text)
+        #[cfg(all(feature = "onnx", feature = "text"))]
+        #[arg(long, value_name = "tokenizer.json")]
+        tokenizer: Option<String>,
+        /// Max token length for truncation/padding
+        #[cfg(all(feature = "onnx", feature = "text"))]
+        #[arg(long)]
+        max_len: Option<usize>,
+        /// Enable truncation when sequence exceeds max_len
+        #[cfg(all(feature = "onnx", feature = "text"))]
+        #[arg(long, default_value_t = false)]
+        truncation: bool,
+        /// Enable padding up to max_len
+        #[cfg(all(feature = "onnx", feature = "text"))]
+        #[arg(long, default_value_t = false)]
+        padding: bool,
     },
 }
 
@@ -99,12 +131,25 @@ fn main() -> Result<()> {
             #[cfg(feature = "onnx")] onnx_model,
             #[cfg(feature = "onnx")] onnx_input,
             #[cfg(feature = "onnx")] onnx_output,
+        
         } => {
             let task_kind = match task { Task::Class => CalibFileKind::Classification, Task::Regr => CalibFileKind::Regression };
             #[cfg(feature = "onnx")]
             let cfg = {
                 let onnx = onnx_model.as_ref().map(|m| onnxconformal_rs::onnx::OnnxOptions { model: m.clone(), input_name: onnx_input.clone(), output_name: onnx_output.clone() });
-                CalibConfig { alpha, mondrian, max_rows, onnx }
+                #[cfg(feature = "text")]
+                let text = {
+                    #[allow(unused_mut)]
+                    let mut t = None;
+                    #[cfg(all(feature = "text"))]
+                    {
+                        if let Some(tok) = tokenizer.as_ref() {
+                            t = Some(onnxconformal_rs::text::TextOptions { tokenizer: tok.clone(), max_len, truncation, padding });
+                        }
+                    }
+                    t
+                };
+                CalibConfig { alpha, mondrian, max_rows, onnx, #[cfg(feature = "text")] text }
             };
             #[cfg(not(feature = "onnx"))]
             let cfg = CalibConfig { alpha, mondrian, max_rows };
@@ -123,7 +168,19 @@ fn main() -> Result<()> {
             #[cfg(feature = "onnx")]
             let pred_cfg = {
                 let onnx = onnx_model.as_ref().map(|m| onnxconformal_rs::onnx::OnnxOptions { model: m.clone(), input_name: onnx_input.clone(), output_name: onnx_output.clone() });
-                PredConfig { max_set_size, include_probs, max_rows, onnx }
+                #[cfg(feature = "text")]
+        		let text = {
+        		    #[allow(unused_mut)]
+        		    let mut t = None;
+        		    #[cfg(all(feature = "text"))]
+        		    {
+        		        if let Some(tok) = tokenizer.as_ref() {
+        		            t = Some(onnxconformal_rs::text::TextOptions { tokenizer: tok.clone(), max_len, truncation, padding });
+        		        }
+        		    }
+        		    t
+        		};
+                PredConfig { max_set_size, include_probs, max_rows, onnx, #[cfg(feature = "text")] text }
             };
             #[cfg(not(feature = "onnx"))]
             let pred_cfg = PredConfig { max_set_size, include_probs, max_rows };

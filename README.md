@@ -46,6 +46,13 @@ ONNX/ORT support (optional)
   - Prediction rows: `{ "x": [f32,...] }`.
 - For classification, the ONNX model is expected to output a 1D vector of scores per class for batch size 1. These are treated as logits and passed through softmax.
 
+Text tokenization (optional)
+
+- Build with features `onnx,text` to enable raw-text inputs via Hugging Face tokenizers.
+  - Flags: `--tokenizer tokenizer.json [--max_len N --truncation --padding]`.
+  - JSONL rows use `text`: e.g., calibration `{ "text": "phishy message", "label":"phish", "labels":["ham","phish"] }`; prediction `{ "text": "..." }`.
+  - Models expecting integer token IDs (int64/int32) are supported. Input/output dtypes now include `i64/i32` in addition to `f32/bool`.
+
 Examples
 
 - Calibrate classification from ONNX model outputs:
@@ -74,3 +81,29 @@ Run with sample files
 - Regression:
   - `cargo run -- calibrate --task regr --alpha 0.2 --input examples/regr_calib.jsonl --output calib_regr.json`
   - `cargo run -- predict --task regr --calib calib_regr.json --input examples/regr_preds.jsonl --output intervals.jsonl`
+
+
+## Types of Models Supported: 
+
+- Model-agnostic (recommended): export predictions to JSONL.
+    - Classification calibration: rows with probs or logits and a true label (label or label_index).
+    - Classification prediction: rows with probs or logits.
+    - Regression calibration: rows with y_true and y_pred.
+    - Regression prediction: rows with y_pred.
+- ONNX Runtime (optional --features onnx): single-input, single-output models.
+    - Input: feature vector x: [f32; D] (we feed shape [1, D]).
+    - Output (class): 1-D class scores per example (treated as logits → softmax).
+    - Output (regr): scalar value (we use the first element).
+
+Framework Examples
+
+- Via JSONL: scikit-learn, PyTorch, TensorFlow/Keras, XGBoost, LightGBM, JAX, etc. (anything that can dump predictions/labels).
+- Via ONNX: models exported from the above toolchains to ONNX that meet the single-input/single-output constraint.
+
+Constraints & Notes
+
+- ONNX dtypes: supports f32 and bool inputs/outputs.
+- Batch size: 1 (streaming). Multi-batch not supported.
+- ONNX topology: exactly one input and one output tensor.
+- Classification ONNX output should be logits; if your model outputs probabilities, prefer the JSONL path to avoid re-softmaxing.
+- Not supported: multilabel, multi-input/multi-output ONNX graphs, structured outputs (e.g., detection/segmentation).

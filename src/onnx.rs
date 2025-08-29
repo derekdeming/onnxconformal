@@ -66,10 +66,8 @@ impl OnnxRunner {
         Ok(Self { session, input_name, output_name, in_dtype, out_dtype })
     }
 
-    /// Runs inference for a single 1‑D feature vector (batch size 1).
-    ///
-    /// Returns the output flattened into a `Vec<f32>`, converting boolean
-    /// outputs to `0.0/1.0` when necessary.
+    /// Runs inference for a single 1‑D feature vector (batch size 1) of f32.
+    /// Returns a flattened `Vec<f32>`; boolean/int outputs are converted.
     pub fn infer_vec_f32(&mut self, x: &[f32]) -> Result<Vec<f32>> {
         let inputs_val = match self.in_dtype {
             TensorElementType::Float32 => {
@@ -81,7 +79,7 @@ impl OnnxRunner {
                 let tensor = ort::value::Tensor::<bool>::from_array(([1usize, v.len()], v.into_boxed_slice()))?;
                 ort::inputs![ self.input_name.as_str() => tensor ]
             }
-            other => anyhow::bail!("unsupported input dtype: {:?}", other),
+            other => anyhow::bail!("unsupported input dtype for f32 input: {:?}", other),
         };
 
         let outputs = self.session
@@ -101,6 +99,65 @@ impl OnnxRunner {
                 let tref: ort::value::TensorRef<bool> = value.downcast_ref().context("output not bool tensor")?;
                 let (_, data) = tref.extract_tensor();
                 data.iter().map(|&b| if b { 1.0 } else { 0.0 }).collect()
+            }
+            TensorElementType::Int64 => {
+                let tref: ort::value::TensorRef<i64> = value.downcast_ref().context("output not i64 tensor")?;
+                let (_, data) = tref.extract_tensor();
+                data.iter().map(|&v| v as f32).collect()
+            }
+            TensorElementType::Int32 => {
+                let tref: ort::value::TensorRef<i32> = value.downcast_ref().context("output not i32 tensor")?;
+                let (_, data) = tref.extract_tensor();
+                data.iter().map(|&v| v as f32).collect()
+            }
+            other => anyhow::bail!("unsupported output dtype: {:?}", other),
+        };
+        Ok(vec_f32)
+    }
+
+    /// Runs inference for a single 1‑D feature vector (batch size 1) of i64 IDs.
+    /// Returns a flattened `Vec<f32>`; boolean/int outputs are converted.
+    pub fn infer_vec_i64(&mut self, x: &[i64]) -> Result<Vec<f32>> {
+        let inputs_val = match self.in_dtype {
+            TensorElementType::Int64 => {
+                let tensor = ort::value::Tensor::<i64>::from_array(([1usize, x.len()], x.to_vec().into_boxed_slice()))?;
+                ort::inputs![ self.input_name.as_str() => tensor ]
+            }
+            TensorElementType::Int32 => {
+                let v: Vec<i32> = x.iter().map(|&v| v as i32).collect();
+                let tensor = ort::value::Tensor::<i32>::from_array(([1usize, v.len()], v.into_boxed_slice()))?;
+                ort::inputs![ self.input_name.as_str() => tensor ]
+            }
+            other => anyhow::bail!("unsupported input dtype for i64 input: {:?}", other),
+        };
+
+        let outputs = self.session
+            .run(inputs_val)
+            .context("onnx run failed")?;
+
+        let value = outputs
+            .get(self.output_name.as_str())
+            .ok_or_else(|| anyhow::anyhow!("output '{}' missing from model run", self.output_name))?;
+        let vec_f32: Vec<f32> = match self.out_dtype {
+            TensorElementType::Float32 => {
+                let tref: ort::value::TensorRef<f32> = value.downcast_ref().context("output not f32 tensor")?;
+                let (_, data) = tref.extract_tensor();
+                data.to_vec()
+            }
+            TensorElementType::Bool => {
+                let tref: ort::value::TensorRef<bool> = value.downcast_ref().context("output not bool tensor")?;
+                let (_, data) = tref.extract_tensor();
+                data.iter().map(|&b| if b { 1.0 } else { 0.0 }).collect()
+            }
+            TensorElementType::Int64 => {
+                let tref: ort::value::TensorRef<i64> = value.downcast_ref().context("output not i64 tensor")?;
+                let (_, data) = tref.extract_tensor();
+                data.iter().map(|&v| v as f32).collect()
+            }
+            TensorElementType::Int32 => {
+                let tref: ort::value::TensorRef<i32> = value.downcast_ref().context("output not i32 tensor")?;
+                let (_, data) = tref.extract_tensor();
+                data.iter().map(|&v| v as f32).collect()
             }
             other => anyhow::bail!("unsupported output dtype: {:?}", other),
         };

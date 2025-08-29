@@ -12,6 +12,8 @@ pub struct PredConfig {
     pub max_rows: Option<usize>,
     #[cfg(feature = "onnx")]
     pub onnx: Option<crate::onnx::OnnxOptions>,
+    #[cfg(all(feature = "onnx", feature = "text"))]
+    pub text: Option<crate::text::TextOptions>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -32,10 +34,20 @@ pub struct RegrPredRow { pub y_pred: f64 }
 /// ONNX-backed input row for classification prediction (`x` features).
 pub struct ClassPredRowOnnx { pub x: Vec<f32> }
 
+#[cfg(all(feature = "onnx", feature = "text"))]
+#[derive(Debug, Clone, Deserialize)]
+/// ONNX-backed input row for classification prediction from raw text.
+pub struct ClassPredRowOnnxText { pub text: String }
+
 #[cfg(feature = "onnx")]
 #[derive(Debug, Clone, Deserialize)]
 /// ONNX-backed input row for regression prediction (`x` features).
 pub struct RegrPredRowOnnx { pub x: Vec<f32> }
+
+#[cfg(all(feature = "onnx", feature = "text"))]
+#[derive(Debug, Clone, Deserialize)]
+/// ONNX-backed input row for regression prediction from raw text.
+pub struct RegrPredRowOnnxText { pub text: String }
 
 #[derive(Debug, Clone, Serialize)]
 /// Output record for classification prediction sets.
@@ -68,6 +80,10 @@ pub fn predict_classification<R: BufRead, W: Write>(
     if calib.task != "class" { anyhow::bail!("calib is not classification"); }
     #[cfg(feature = "onnx")]
     if let Some(onnx) = cfg.onnx.clone() {
+        #[cfg(feature = "text")]
+        if let Some(text) = cfg.text.clone() {
+            return predict_classification_onnx_text(calib, reader, writer, cfg, onnx, text);
+        }
         return predict_classification_onnx(calib, reader, writer, cfg, onnx);
     }
     let label_names = calib.labels.clone();
@@ -113,6 +129,10 @@ pub fn predict_regression<R: BufRead, W: Write>(
     if calib.task != "regr" { anyhow::bail!("calib is not regression"); }
     #[cfg(feature = "onnx")]
     if let Some(onnx) = cfg.onnx.clone() {
+        #[cfg(feature = "text")]
+        if let Some(text) = cfg.text.clone() {
+            return predict_regression_onnx_text(calib, reader, writer, cfg, onnx, text);
+        }
         return predict_regression_onnx(calib, reader, writer, cfg, onnx);
     }
     let q = calib.global_q;
@@ -167,6 +187,46 @@ fn predict_classification_onnx<R: BufRead, W: Write>(
     Ok(())
 }
 
+#[cfg(all(feature = "onnx", feature = "text"))]
+/// ONNX-backed variant of classification prediction from raw text using a tokenizer.
+fn predict_classification_onnx_text<R: BufRead, W: Write>(
+    calib: &CalibModel,
+    reader: R,
+    mut writer: W,
+    cfg: PredConfig,
+    onnx: crate::onnx::OnnxOptions,
+    text: crate::text::TextOptions,
+) -> Result<()> {
+    use crate::onnx::OnnxRunner;
+    use crate::text::TextTokenizer;
+    let mut runner = OnnxRunner::new(&onnx)?;
+    let tok = TextTokenizer::new(&text)?;
+    let label_names = calib.labels.clone();
+    let q = calib.global_q;
+    let mut count = 0usize;
+    for line in reader.lines() {
+        if let Some(m) = cfg.max_rows { if count >= m { break; } }
+        let l = line?;
+        if l.trim().is_empty() { continue; }
+        count += 1;
+        let r: ClassPredRowOnnxText = serde_json::from_str(&l)?;
+        let ids = tok.encode_ids_i64(&r.text)?;
+        let out = runner.infer_vec_i64(&ids)?;
+        let logits_f64: Vec<f64> = out.iter().map(|&v| v as f64).collect();
+        let probs = ensure_prob_vector(softmax(&logits_f64));
+        if probs.is_empty() { continue; }
+        let mut set: Vec<usize> = probs.iter().enumerate().filter_map(|(i, &p)| if (1.0 - p) <= q { Some(i) } else { None }).collect();
+        if let Some(cap) = cfg.max_set_size { if set.len() > cap { set.sort_unstable_by(|&a, &b| probs[b].partial_cmp(&probs[a]).unwrap()); set.truncate(cap); set.sort_unstable(); } }
+        let max_idx = argmax(&probs);
+        let set_labels = label_names.as_ref().map(|names| set.iter().map(|&i| names.get(i).cloned().unwrap_or_else(|| format!("{}", i))).collect::<Vec<_>>());
+        let max_label = match (&label_names, max_idx) { (Some(names), Some(i)) => Some(names[i].clone()), _ => None };
+        let set_probs = if cfg.include_probs { Some(set.iter().map(|&i| probs[i]).collect()) } else { None };
+        let out = ClassPredOut { set_indices: set.clone(), set_labels, set_size: set.len(), max_prob_label: max_label, max_prob_index: max_idx, set_probs };
+        jsonl_ser(&mut writer, &out)?;
+    }
+    Ok(())
+}
+
 #[cfg(feature = "onnx")]
 /// ONNX-backed variant of regression prediction.
 fn predict_regression_onnx<R: BufRead, W: Write>(
@@ -187,6 +247,40 @@ fn predict_regression_onnx<R: BufRead, W: Write>(
         count += 1;
         let r: RegrPredRowOnnx = serde_json::from_str(&l)?;
         let out = runner.infer_vec_f32(&r.x)?;
+        if out.is_empty() { continue; }
+        let y_pred = out[0] as f64;
+        let lower = y_pred - q;
+        let upper = y_pred + q;
+        let out = RegrPredOut { y_pred, lower, upper, width: upper - lower };
+        jsonl_ser(&mut writer, &out)?;
+    }
+    Ok(())
+}
+
+#[cfg(all(feature = "onnx", feature = "text"))]
+/// ONNX-backed variant of regression prediction from raw text using a tokenizer.
+fn predict_regression_onnx_text<R: BufRead, W: Write>(
+    calib: &CalibModel,
+    reader: R,
+    mut writer: W,
+    cfg: PredConfig,
+    onnx: crate::onnx::OnnxOptions,
+    text: crate::text::TextOptions,
+) -> Result<()> {
+    use crate::onnx::OnnxRunner;
+    use crate::text::TextTokenizer;
+    let mut runner = OnnxRunner::new(&onnx)?;
+    let tok = TextTokenizer::new(&text)?;
+    let q = calib.global_q;
+    let mut count = 0usize;
+    for line in reader.lines() {
+        if let Some(m) = cfg.max_rows { if count >= m { break; } }
+        let l = line?;
+        if l.trim().is_empty() { continue; }
+        count += 1;
+        let r: RegrPredRowOnnxText = serde_json::from_str(&l)?;
+        let ids = tok.encode_ids_i64(&r.text)?;
+        let out = runner.infer_vec_i64(&ids)?;
         if out.is_empty() { continue; }
         let y_pred = out[0] as f64;
         let lower = y_pred - q;
