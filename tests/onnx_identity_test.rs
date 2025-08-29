@@ -174,12 +174,9 @@ fn onnx_regression_identity_end_to_end() {
     let calib_path = tmp_file("regr_feats", "jsonl");
     {
         let mut f = fs::File::create(&calib_path).unwrap();
-        writeln!(f, "{}", serde_json::json!({"x":[1.2], "y_true": 1.0}))
-        .unwrap();
-        writeln!(f, "{}", serde_json::json!({"x":[-0.1], "y_true": 0.0}))
-        .unwrap();
-        writeln!(f, "{}", serde_json::json!({"x":[-0.7], "y_true": -1.0}))
-        .unwrap();
+        writeln!(f, "{}", serde_json::json!({"x":[1.2], "y_true": 1.0})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"x":[-0.1], "y_true": 0.0})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"x":[-0.7], "y_true": -1.0})).unwrap();
     }
     let cfg = CalibConfig {
         alpha: 0.2,

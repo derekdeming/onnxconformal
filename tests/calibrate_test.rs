@@ -77,12 +77,9 @@ fn test_calibrate_regression() {
     let path = tmp_file("regr");
     {
         let mut f = fs::File::create(&path).unwrap();
-        writeln!(f, "{}", serde_json::json!({"y_true": 1.0, "y_pred": 1.2}))
-        .unwrap();
-        writeln!(f, "{}", serde_json::json!({"y_true": 0.0, "y_pred": -0.1}))
-        .unwrap();
-        writeln!(f, "{}", serde_json::json!({"y_true": -1.0, "y_pred": -0.7}))
-        .unwrap();
+        writeln!(f, "{}", serde_json::json!({"y_true": 1.0, "y_pred": 1.2})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"y_true": 0.0, "y_pred": -0.1})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"y_true": -1.0, "y_pred": -0.7})).unwrap();
     }
 
     let cfg = CalibConfig {
