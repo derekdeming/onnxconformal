@@ -81,18 +81,6 @@ pub struct RegrPredOut {
     pub width: f64,
 }
 
-fn build_class_output(
-    probs: &[f64],
-    label_names: Option<&Vec<String>>,
-    q: f64,
-    max_set_size: Option<usize>,
-    include_probs: bool,
-) -> ClassPredOut {
-    // Helper to resolve per-label thresholds (Mondrian). Falls back to global q.
-    let per_label_q: Option<&HashMap<String, f64>> = None;
-    build_class_output_with_mondrian(probs, label_names, q, per_label_q, max_set_size, include_probs)
-}
-
 fn build_class_output_with_mondrian(
     probs: &[f64],
     label_names: Option<&Vec<String>>,
