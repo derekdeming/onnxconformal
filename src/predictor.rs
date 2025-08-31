@@ -2,8 +2,8 @@ use crate::calibrator::CalibModel;
 use crate::utils::{argmax, ensure_prob_vector, jsonl_ser, softmax};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, Write};
 use std::collections::HashMap;
+use std::io::{BufRead, Write};
 
 #[derive(Debug, Clone)]
 /// Configuration for prediction routines.
