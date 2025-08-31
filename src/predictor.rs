@@ -3,6 +3,7 @@ use crate::utils::{argmax, ensure_prob_vector, jsonl_ser, softmax};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Write};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 /// Configuration for prediction routines.
@@ -87,11 +88,34 @@ fn build_class_output(
     max_set_size: Option<usize>,
     include_probs: bool,
 ) -> ClassPredOut {
-    let mut set: Vec<usize> = probs
-        .iter()
-        .enumerate()
-        .filter_map(|(i, &p)| if (1.0 - p) <= q { Some(i) } else { None })
-        .collect();
+    // Helper to resolve per-label thresholds (Mondrian). Falls back to global q.
+    let per_label_q: Option<&HashMap<String, f64>> = None;
+    build_class_output_with_mondrian(probs, label_names, q, per_label_q, max_set_size, include_probs)
+}
+
+fn build_class_output_with_mondrian(
+    probs: &[f64],
+    label_names: Option<&Vec<String>>,
+    global_q: f64,
+    per_label_q: Option<&HashMap<String, f64>>,
+    max_set_size: Option<usize>,
+    include_probs: bool,
+) -> ClassPredOut {
+    let mut set: Vec<usize> = Vec::new();
+    for (i, &p) in probs.iter().enumerate() {
+        let q_i = if let Some(map) = per_label_q {
+            let key = match label_names {
+                Some(names) => names.get(i).cloned().unwrap_or_else(|| format!("{}", i)),
+                None => format!("{}", i),
+            };
+            *map.get(&key).unwrap_or(&global_q)
+        } else {
+            global_q
+        };
+        if (1.0 - p) <= q_i {
+            set.push(i);
+        }
+    }
     if let Some(cap) = max_set_size {
         if set.len() > cap {
             set.sort_unstable_by(|&a, &b| probs[b].partial_cmp(&probs[a]).unwrap());
@@ -144,6 +168,7 @@ pub fn predict_classification<R: BufRead, W: Write>(
     }
     let label_names = calib.labels.clone();
     let q = calib.global_q;
+    let per_label_q = calib.per_label_q.as_ref();
     let mut count = 0usize;
     for line in reader.lines() {
         if let Some(m) = cfg.max_rows {
@@ -165,10 +190,11 @@ pub fn predict_classification<R: BufRead, W: Write>(
         if probs.is_empty() {
             continue;
         }
-        let out = build_class_output(
+        let out = build_class_output_with_mondrian(
             &probs,
             label_names.as_ref(),
             q,
+            per_label_q,
             cfg.max_set_size,
             cfg.include_probs,
         );
@@ -235,6 +261,7 @@ fn predict_classification_onnx<R: BufRead, W: Write>(
     let mut runner = OnnxRunner::new(&onnx)?;
     let label_names = calib.labels.clone();
     let q = calib.global_q;
+    let per_label_q = calib.per_label_q.as_ref();
     let mut count = 0usize;
     for line in reader.lines() {
         if let Some(m) = cfg.max_rows {
@@ -254,10 +281,11 @@ fn predict_classification_onnx<R: BufRead, W: Write>(
         if probs.is_empty() {
             continue;
         }
-        let out = build_class_output(
+        let out = build_class_output_with_mondrian(
             &probs,
             label_names.as_ref(),
             q,
+            per_label_q,
             cfg.max_set_size,
             cfg.include_probs,
         );
@@ -282,6 +310,7 @@ fn predict_classification_onnx_text<R: BufRead, W: Write>(
     let tok = TextTokenizer::new(&text)?;
     let label_names = calib.labels.clone();
     let q = calib.global_q;
+    let per_label_q = calib.per_label_q.as_ref();
     let mut count = 0usize;
     for line in reader.lines() {
         if let Some(m) = cfg.max_rows {
@@ -313,10 +342,11 @@ fn predict_classification_onnx_text<R: BufRead, W: Write>(
         if probs.is_empty() {
             continue;
         }
-        let out = build_class_output(
+        let out = build_class_output_with_mondrian(
             &probs,
             label_names.as_ref(),
             q,
+            per_label_q,
             cfg.max_set_size,
             cfg.include_probs,
         );

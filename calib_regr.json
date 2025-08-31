@@ -1,0 +1,8 @@
+{
+  "task": "regr",
+  "alpha": 0.2,
+  "global_q": 0.30000000000000004,
+  "per_label_q": null,
+  "labels": null,
+  "n": 3
+}
