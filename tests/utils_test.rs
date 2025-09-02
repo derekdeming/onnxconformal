@@ -63,12 +63,12 @@ fn test_resolve_label_index_with_numeric_and_string() {
 
     // String label with provided canonical label list
     let canon = vec!["ham".to_string(), "phish".to_string(), "spam".to_string()];
-    let idx2 = resolve_label_index(None, Some(&serde_json::json!("phish")), 3, Some(&canon))
-        .unwrap();
+    let idx2 =
+        resolve_label_index(None, Some(&serde_json::json!("phish")), 3, Some(&canon)).unwrap();
     assert_eq!(idx2, 1);
 
     // Explicit label_index wins and is range-checked
-    let idx3 = resolve_label_index(Some(0), Some(&serde_json::json!("spam")), 3, Some(&canon))
-        .unwrap();
+    let idx3 =
+        resolve_label_index(Some(0), Some(&serde_json::json!("spam")), 3, Some(&canon)).unwrap();
     assert_eq!(idx3, 0);
 }

@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
+use std::io::BufRead;
 use std::io::BufReader;
 
 #[derive(Debug, Clone)]
@@ -39,28 +40,38 @@ pub struct CalibModel {
 impl CalibModel {
     /// Fits a calibration model from a JSONL file.
     pub fn fit_from_file(path: &str, kind: CalibFileKind, cfg: CalibConfig) -> Result<Self> {
+        let reader = BufReader::new(File::open(path).with_context(|| "open calib file")?);
+        Self::fit_from_reader(reader, kind, cfg)
+    }
+
+    /// Fits a calibration model from any BufRead, enabling stdin streaming.
+    pub fn fit_from_reader<R: BufRead>(
+        reader: R,
+        kind: CalibFileKind,
+        cfg: CalibConfig,
+    ) -> Result<Self> {
         match kind {
             CalibFileKind::Classification => {
                 #[cfg(feature = "onnx")]
                 if let Some(onnx) = cfg.onnx.clone() {
                     #[cfg(feature = "text")]
                     if let Some(text) = cfg.text.clone() {
-                        return fit_class_from_jsonl_onnx_text(path, cfg, onnx, text);
+                        return fit_class_from_reader_onnx_text(reader, cfg, onnx, text);
                     }
-                    return fit_class_from_jsonl_onnx(path, cfg, onnx);
+                    return fit_class_from_reader_onnx(reader, cfg, onnx);
                 }
-                fit_class_from_jsonl(path, cfg)
+                fit_class_from_reader(reader, cfg)
             }
             CalibFileKind::Regression => {
                 #[cfg(feature = "onnx")]
                 if let Some(onnx) = cfg.onnx.clone() {
                     #[cfg(feature = "text")]
                     if let Some(text) = cfg.text.clone() {
-                        return fit_regr_from_jsonl_onnx_text(path, cfg, onnx, text);
+                        return fit_regr_from_reader_onnx_text(reader, cfg, onnx, text);
                     }
-                    return fit_regr_from_jsonl_onnx(path, cfg, onnx);
+                    return fit_regr_from_reader_onnx(reader, cfg, onnx);
                 }
-                fit_regr_from_jsonl(path, cfg)
+                fit_regr_from_reader(reader, cfg)
             }
         }
     }
@@ -122,8 +133,7 @@ struct ClassCalibRow {
 }
 
 /// Fits a classification calibration model from probabilities/logits JSONL.
-fn fit_class_from_jsonl(path: &str, cfg: CalibConfig) -> Result<CalibModel> {
-    let reader = BufReader::new(File::open(path).with_context(|| "open class calib file")?);
+fn fit_class_from_reader<R: BufRead>(reader: R, cfg: CalibConfig) -> Result<CalibModel> {
     let rows: Vec<ClassCalibRow> = crate::utils::jsonl_deser(reader, cfg.max_rows)?;
     if rows.is_empty() {
         anyhow::bail!("no calibration rows");
@@ -211,9 +221,8 @@ struct RegrCalibRow {
     y_pred: f64,
 }
 
-/// Fits a regression calibration model from `y_true/y_pred` JSONL.
-fn fit_regr_from_jsonl(path: &str, cfg: CalibConfig) -> Result<CalibModel> {
-    let reader = BufReader::new(File::open(path).with_context(|| "open regr calib file")?);
+/// Fits a regression calibration model from `y_true/y_pred` JSONL via any BufRead.
+fn fit_regr_from_reader<R: BufRead>(reader: R, cfg: CalibConfig) -> Result<CalibModel> {
     let rows: Vec<RegrCalibRow> = jsonl_deser(reader, cfg.max_rows)?;
     if rows.is_empty() {
         anyhow::bail!("no calibration rows");
@@ -241,6 +250,8 @@ fn fit_regr_from_jsonl(path: &str, cfg: CalibConfig) -> Result<CalibModel> {
         n: sorted.len(),
     })
 }
+/// Fits a regression calibration model from `y_true/y_pred` JSONL file path.
+// (Removed file-path wrapper for regression; `fit_from_file` uses reader-based path.)
 
 #[cfg(feature = "onnx")]
 #[derive(Debug, Clone, Deserialize)]
@@ -257,13 +268,12 @@ struct ClassCalibRowOnnx {
 #[cfg(feature = "onnx")]
 /// Fits a classification calibration model by running an ONNX model over
 /// feature vectors (`x`) and using the output as logits.
-fn fit_class_from_jsonl_onnx(
-    path: &str,
+fn fit_class_from_reader_onnx<R: BufRead>(
+    reader: R,
     cfg: CalibConfig,
     onnx: crate::onnx::OnnxOptions,
 ) -> Result<CalibModel> {
     use crate::onnx::OnnxRunner;
-    let reader = BufReader::new(File::open(path).with_context(|| "open class calib file (onnx)")?);
     let rows: Vec<ClassCalibRowOnnx> = crate::utils::jsonl_deser(reader, cfg.max_rows)?;
     if rows.is_empty() {
         anyhow::bail!("no calibration rows");
@@ -353,16 +363,14 @@ struct ClassCalibRowOnnxText {
 
 #[cfg(all(feature = "onnx", feature = "text"))]
 /// Fits classification calibration for text inputs using a tokenizer and ONNX model.
-fn fit_class_from_jsonl_onnx_text(
-    path: &str,
+fn fit_class_from_reader_onnx_text<R: BufRead>(
+    reader: R,
     cfg: CalibConfig,
     onnx: crate::onnx::OnnxOptions,
     text: crate::text::TextOptions,
 ) -> Result<CalibModel> {
     use crate::onnx::OnnxRunner;
     use crate::text::TextTokenizer;
-    let reader =
-        BufReader::new(File::open(path).with_context(|| "open class calib file (onnx-text)")?);
     let rows: Vec<ClassCalibRowOnnxText> = crate::utils::jsonl_deser(reader, cfg.max_rows)?;
     if rows.is_empty() {
         anyhow::bail!("no calibration rows");
@@ -462,13 +470,12 @@ struct RegrCalibRowOnnx {
 #[cfg(feature = "onnx")]
 /// Fits a regression calibration model by running an ONNX model to obtain
 /// `y_pred` values for each feature vector.
-fn fit_regr_from_jsonl_onnx(
-    path: &str,
+fn fit_regr_from_reader_onnx<R: BufRead>(
+    reader: R,
     cfg: CalibConfig,
     onnx: crate::onnx::OnnxOptions,
 ) -> Result<CalibModel> {
     use crate::onnx::OnnxRunner;
-    let reader = BufReader::new(File::open(path).with_context(|| "open regr calib file (onnx)")?);
     let rows: Vec<RegrCalibRowOnnx> = jsonl_deser(reader, cfg.max_rows)?;
     if rows.is_empty() {
         anyhow::bail!("no calibration rows");
@@ -512,16 +519,14 @@ struct RegrCalibRowOnnxText {
 
 #[cfg(all(feature = "onnx", feature = "text"))]
 /// Fits regression calibration for text inputs using a tokenizer and ONNX model.
-fn fit_regr_from_jsonl_onnx_text(
-    path: &str,
+fn fit_regr_from_reader_onnx_text<R: BufRead>(
+    reader: R,
     cfg: CalibConfig,
     onnx: crate::onnx::OnnxOptions,
     text: crate::text::TextOptions,
 ) -> Result<CalibModel> {
     use crate::onnx::OnnxRunner;
     use crate::text::TextTokenizer;
-    let reader =
-        BufReader::new(File::open(path).with_context(|| "open regr calib file (onnx-text)")?);
     let rows: Vec<RegrCalibRowOnnxText> = jsonl_deser(reader, cfg.max_rows)?;
     if rows.is_empty() {
         anyhow::bail!("no calibration rows");
@@ -572,3 +577,6 @@ fn fit_regr_from_jsonl_onnx_text(
         n: sorted.len(),
     })
 }
+
+// Backwards-compatible wrappers that open a file and delegate to reader-based implementations
+// (Removed file-path wrapper for classification; `fit_from_file` uses reader-based path.)

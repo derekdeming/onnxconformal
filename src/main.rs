@@ -208,8 +208,13 @@ fn main() -> Result<()> {
                 mondrian,
                 max_rows,
             };
-            let calib = CalibModel::fit_from_file(&input, task_kind, cfg)
-                .with_context(|| "failed to fit calibration")?;
+            let calib = if input == "-" {
+                let reader = std::io::BufReader::new(std::io::stdin());
+                CalibModel::fit_from_reader(reader, task_kind, cfg)
+            } else {
+                CalibModel::fit_from_file(&input, task_kind, cfg)
+            }
+            .with_context(|| "failed to fit calibration")?;
             if output == "-" {
                 serde_json::to_writer_pretty(std::io::stdout(), &calib)?;
                 println!();
