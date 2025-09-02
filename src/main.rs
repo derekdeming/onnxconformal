@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use std::fs::File;
-use std::io::{BufReader, BufWriter};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 
 use onnxconformal_rs::calibrator::{CalibConfig, CalibFileKind, CalibModel, CalibSummary};
 use onnxconformal_rs::predictor::{self, PredConfig};
@@ -210,7 +210,12 @@ fn main() -> Result<()> {
             };
             let calib = CalibModel::fit_from_file(&input, task_kind, cfg)
                 .with_context(|| "failed to fit calibration")?;
-            calib.save(&output)?;
+            if output == "-" {
+                serde_json::to_writer_pretty(std::io::stdout(), &calib)?;
+                println!();
+            } else {
+                calib.save(&output)?;
+            }
             let summary = CalibSummary::from(&calib);
             eprintln!("{}", serde_json::to_string_pretty(&summary)?);
         }
@@ -277,9 +282,21 @@ fn main() -> Result<()> {
                 include_probs,
                 max_rows,
             };
-            let reader = BufReader::new(File::open(&input).with_context(|| "open input JSONL")?);
-            let writer =
-                BufWriter::new(File::create(&output).with_context(|| "create output JSONL")?);
+            // Support streaming via '-' for stdin/stdout
+            let reader: Box<dyn BufRead> = if input == "-" {
+                Box::new(BufReader::new(std::io::stdin()))
+            } else {
+                Box::new(BufReader::new(
+                    File::open(&input).with_context(|| "open input JSONL")?,
+                ))
+            };
+            let writer: Box<dyn Write> = if output == "-" {
+                Box::new(BufWriter::new(std::io::stdout()))
+            } else {
+                Box::new(BufWriter::new(
+                    File::create(&output).with_context(|| "create output JSONL")?,
+                ))
+            };
             match task {
                 Task::Class => {
                     predictor::predict_classification(&calib, reader, writer, pred_cfg)?;

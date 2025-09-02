@@ -103,8 +103,15 @@ Framework Examples
 
 Constraints & Notes
 
-- ONNX dtypes: supports f32 and bool inputs/outputs.
+- ONNX dtypes: supports f32/bool/i64/i32 inputs and outputs.
 - Batch size: 1 (streaming). Multi-batch not supported.
-- ONNX topology: exactly one input and one output tensor.
+- ONNX I/O: single- or multi-input (1–3) named feeds supported for integer text models; output name selection supported.
 - Classification ONNX output should be logits; if your model outputs probabilities, prefer the JSONL path to avoid re-softmaxing.
-- Not supported: multilabel, multi-input/multi-output ONNX graphs, structured outputs (e.g., detection/segmentation).
+- Not supported: multilabel, structured outputs (e.g., detection/segmentation).
+
+Streaming via stdin/stdout
+
+- Use `-` to read input JSONL from stdin and/or write JSON/JSONL to stdout.
+  - Examples:
+    - `cat calib.jsonl | cargo run -- calibrate --task class --alpha 0.1 --input - --output -`
+    - `cat examples/class_scores.jsonl | cargo run -- predict --task class --calib calib.json --input - --output - --include_probs`
