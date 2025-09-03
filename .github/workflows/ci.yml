@@ -47,7 +47,6 @@ jobs:
         env:
           RUST_BACKTRACE: 1
         run: cargo test --features onnx --locked
-        continue-on-error: true
 
   check-onnx-text:
     name: "Test (features: onnx,text)"
@@ -60,4 +59,3 @@ jobs:
         env:
           RUST_BACKTRACE: 1
         run: cargo test --features onnx,text --locked
-        continue-on-error: true
